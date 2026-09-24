@@ -2,29 +2,32 @@
 
 import { useState, useRef, FormEvent } from 'react'
 import { Upload, Paperclip, FileText, Check, ShieldCheck, X, ArrowUpRight, Loader2 } from 'lucide-react'
+import policy from '../../policy_terms.json'
 
-export function NewClaim({ close }: { close: () => void }) { 
-  const [files, setFiles] = useState<File[]>([]); 
-  const [submitted, setSubmitted] = useState(false); 
+export function NewClaim({ close }: { close: () => void }) {
+  const [category, setCategory] = useState<string>('');
+  const [files, setFiles] = useState<Record<string, File>>({});
+  const [submitted, setSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      setFiles((prev) => [...prev, ...Array.from(e.target.files!)]);
+  // Create a ref map for each slot
+  const fileInputRefs = useRef<Record<string, HTMLInputElement>>({});
+
+  const handleFileChange = (docType: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setFiles((prev) => ({ ...prev, [docType]: e.target.files![0] }));
     }
   };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    
+
     try {
       const uploadedBlobs = [];
-      
-      // Upload each file to Vercel Blob
-      for (const file of files) {
+
+      // Upload each mapped file to Vercel Blob
+      for (const [docType, file] of Object.entries(files)) {
         const response = await fetch(
           `/api/upload?filename=${encodeURIComponent(file.name)}`,
           {
@@ -32,20 +35,45 @@ export function NewClaim({ close }: { close: () => void }) {
             body: file,
           }
         );
-        
+
         if (!response.ok) {
           throw new Error('Failed to upload ' + file.name);
         }
 
         const newBlob = await response.json();
-        uploadedBlobs.push(newBlob);
+        uploadedBlobs.push({
+          url: newBlob.url,
+          declaredType: docType,
+          fileName: file.name,
+          fileSize: file.size,
+          mimeType: file.type
+        });
       }
-      
-      console.log('Successfully uploaded blobs:', uploadedBlobs);
-      
-      // TODO: Create the claim in the database using the returned blob URLs
-      // e.g. await fetch('/api/claims', { ... })
-      
+
+      console.log('Successfully uploaded blobs with types:', uploadedBlobs);
+
+      const formData = new FormData(e.currentTarget as HTMLFormElement);
+      const payload = {
+        employeeId: formData.get('employeeId'),
+        policyId: formData.get('policyId'),
+        claimCategory: formData.get('claimCategory'),
+        treatmentDate: formData.get('treatmentDate'),
+        claimedAmount: formData.get('claimedAmount'),
+        // hospitalName: formData.get('hospitalName') || null,
+        documents: uploadedBlobs,
+      };
+
+      const claimRes = await fetch('/api/claims', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!claimRes.ok) {
+        const err = await claimRes.json();
+        throw new Error(err.error || 'Failed to create claim');
+      }
+
       setSubmitted(true);
     } catch (error) {
       console.error('Error during upload:', error);
@@ -54,6 +82,10 @@ export function NewClaim({ close }: { close: () => void }) {
       setIsSubmitting(false);
     }
   };
+
+  const currentReqs = category
+    ? (policy.document_requirements as any)[category]
+    : { required: [], optional: [] };
 
   return (
     <div className="modal-backdrop">
@@ -78,9 +110,9 @@ export function NewClaim({ close }: { close: () => void }) {
             <div className="form-grid">
               <label>Member ID<input required name="employeeId" placeholder="e.g. EMP001" /></label>
               <label>Policy ID<input required name="policyId" defaultValue="PLUM_GHI_2024" /></label>
-              
+
               <label>Treatment type
-                <select required name="claimCategory" defaultValue="">
+                <select required name="claimCategory" value={category} onChange={(e) => setCategory(e.target.value)}>
                   <option value="" disabled>Select category...</option>
                   <option value="CONSULTATION">Consultation</option>
                   <option value="DIAGNOSTIC">Diagnostic</option>
@@ -90,62 +122,97 @@ export function NewClaim({ close }: { close: () => void }) {
                   <option value="ALTERNATIVE_MEDICINE">Alternative Medicine</option>
                 </select>
               </label>
-              
+
               <label>Treatment date<input required type="date" name="treatmentDate" /></label>
               <label>Claimed amount (₹)<input required type="number" step="0.01" name="claimedAmount" placeholder="0.00" /></label>
-              <label>Hospital Name<input name="hospitalName" placeholder="Optional" /></label>
+              {/* <label>Hospital Name<input name="hospitalName" placeholder="Optional" /></label> */}
             </div>
-            
-            <div className="upload-box">
-              <div className="upload-icon"><Upload /></div>
-              <div>
-                <strong>Drop medical documents here</strong>
-                <p>PDF, JPG or PNG · Max 10 MB each</p>
+
+            {category && (
+              <div className="document-slots" style={{ marginTop: '20px' }}>
+                <h4 style={{ fontSize: '11px', textTransform: 'uppercase', color: '#667688', margin: '0 28px 8px', fontWeight: 700 }}>Required Documents</h4>
+                <div className="file-list" style={{ paddingBottom: '0' }}>
+                  {currentReqs.required.map((docType: string) => (
+                    <div key={docType} className="file-item" style={{ marginBottom: '8px' }}>
+                      <FileText style={{ color: files[docType] ? '#1f917b' : undefined }} />
+                      <span>
+                        <strong>{docType.split('_').map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(' ')}</strong>
+                        {files[docType] ? (
+                          <small style={{ color: '#1f917b' }}>{files[docType].name} ({(files[docType].size / (1024 * 1024)).toFixed(2)} MB)</small>
+                        ) : (
+                          <small style={{ color: '#c55c5c' }}>Missing required file</small>
+                        )}
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/*,application/pdf"
+                        style={{ display: 'none' }}
+                        ref={el => { if (el) fileInputRefs.current[docType] = el }}
+                        onChange={(e) => handleFileChange(docType, e)}
+                      />
+                      <button type="button" className="outline-button" style={{ padding: '6px 12px' }} onClick={() => fileInputRefs.current[docType]?.click()}>
+                        {files[docType] ? 'Change' : 'Upload'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                {currentReqs.optional.length > 0 && (
+                  <>
+                    <h4 style={{ fontSize: '11px', textTransform: 'uppercase', color: '#667688', margin: '12px 28px 8px', fontWeight: 700 }}>Optional Documents</h4>
+                    <div className="file-list" style={{ paddingTop: '0' }}>
+                      {currentReqs.optional.map((docType: string) => (
+                        <div key={docType} className="file-item" style={{ marginBottom: '8px' }}>
+                          <FileText style={{ color: files[docType] ? '#1f917b' : undefined }} />
+                          <span>
+                            <strong>{docType.split('_').map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(' ')}</strong>
+                            {files[docType] ? (
+                              <small style={{ color: '#1f917b' }}>{files[docType].name} ({(files[docType].size / (1024 * 1024)).toFixed(2)} MB)</small>
+                            ) : (
+                              <small>Optional attachment</small>
+                            )}
+                          </span>
+                          <input
+                            type="file"
+                            accept="image/*,application/pdf"
+                            style={{ display: 'none' }}
+                            ref={el => { if (el) fileInputRefs.current[docType] = el }}
+                            onChange={(e) => handleFileChange(docType, e)}
+                          />
+                          <button type="button" className="outline-button" style={{ padding: '6px 12px' }} onClick={() => fileInputRefs.current[docType]?.click()}>
+                            {files[docType] ? 'Change' : 'Upload'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
-              <input 
-                type="file" 
-                multiple 
-                accept="image/*,application/pdf" 
-                style={{ display: 'none' }}
-                ref={fileInputRef}
-                onChange={handleFileChange}
-              />
-              <button 
-                type="button" 
-                className="outline-button" 
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <Paperclip /> Browse files
-              </button>
-            </div>
+            )}
 
-            <div className="file-list">
-              {files.map((file, i) => (
-                <div className="file-item" key={i}>
-                  <FileText />
-                  <span>
-                    <strong>{file.name}</strong>
-                    <small>{(file.size / (1024 * 1024)).toFixed(2)} MB · Ready to verify</small>
-                  </span>
-                  <Check className="file-check" />
-                </div>
-              ))}
-              {files.length === 0 && (
-                <div style={{ padding: '0 9px', fontSize: '11px', color: '#888' }}>
-                  No files selected yet. Please upload at least one document.
-                </div>
-              )}
-            </div>
+            {!category && (
+              <div className="upload-box" style={{ marginTop: '20px', opacity: 0.5 }}>
+                <p>Please select a Treatment Type first to see required documents.</p>
+              </div>
+            )}
 
-            <div className="verification-note">
+            <div className="verification-note" style={{ marginTop: '20px' }}>
               <ShieldCheck />
               <span><strong>Early document verification enabled</strong><small>We&apos;ll check that the required prescription or bill is present before processing.</small></span>
             </div>
 
             <div className="modal-footer">
               <button className="outline-button" onClick={close} type="button">Cancel</button>
-              <button className="primary-button" type="submit" disabled={isSubmitting || files.length === 0}>
-                {isSubmitting ? <Loader2 className="animate-spin" /> : 'Submit claim'} 
+              <button
+                className="primary-button"
+                type="submit"
+                disabled={
+                  isSubmitting ||
+                  !category ||
+                  currentReqs.required.some((req: string) => !files[req])
+                }
+              >
+                {isSubmitting ? <Loader2 className="animate-spin" /> : 'Submit claim'}
                 {!isSubmitting && <ArrowUpRight />}
               </button>
             </div>
@@ -153,5 +220,5 @@ export function NewClaim({ close }: { close: () => void }) {
         )}
       </div>
     </div>
-  ) 
+  )
 }
