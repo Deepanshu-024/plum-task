@@ -1,0 +1,206 @@
+// Plum Claims Processing System — Prisma Schema
+// Database: Neon (serverless PostgreSQL)
+// Auth: Clerk (external — we store clerkId reference)
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────
+
+enum ClaimCategory {
+  CONSULTATION
+  DIAGNOSTIC
+  PHARMACY
+  DENTAL
+  VISION
+  ALTERNATIVE_MEDICINE
+}
+
+enum ClaimStatus {
+  QUEUED
+  VERIFYING       // Agent 1 running (synchronous)
+  DOC_ERROR       // Document verification failed — user needs to fix
+  PROCESSING      // Handed off to Trigger.dev pipeline
+  COMPLETED       // Pipeline finished — decision available
+  FAILED          // System error (not a rejection)
+}
+
+enum Decision {
+  APPROVED
+  PARTIAL
+  REJECTED
+  MANUAL_REVIEW
+}
+
+enum DocumentType {
+  PRESCRIPTION
+  HOSPITAL_BILL
+  LAB_REPORT
+  DIAGNOSTIC_REPORT
+  PHARMACY_BILL
+  DENTAL_REPORT
+  DISCHARGE_SUMMARY
+  UNKNOWN
+}
+
+// enum DocumentQuality {
+//   GOOD
+//   POOR
+//   UNREADABLE
+
+// }
+
+enum AgentName {
+  DOCUMENT_VERIFIER
+  DOCUMENT_PARSER
+  POLICY_EVALUATOR
+  FINANCIAL_CALCULATOR
+  FRAUD_DETECTOR
+  DECISION_AGGREGATOR
+}
+
+enum TraceStatus {
+  RUNNING
+  PASS
+  FAIL
+  SKIPPED
+  ERROR
+}
+
+// ─────────────────────────────────────────────
+// Models
+// ─────────────────────────────────────────────
+
+/// Synced from Clerk — stores minimal profile info for DB relations.
+/// Clerk owns auth; we just reference the user here.
+model User {
+  id        String   @id @default(uuid())
+  clerkId   String   @unique 
+  email     String   @unique
+  fullName  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  claims    Claim[]
+
+  @@index([clerkId])
+}
+
+model Claim {
+  id        String @id @default(uuid())
+  userId    String
+  user      User   @relation(fields: [userId], references: [id])
+
+  employeeId      String       
+  policyId      String       
+  claimCategory ClaimCategory
+  treatmentDate DateTime
+  claimedAmount Decimal         @db.Decimal(10, 2)
+
+  status        ClaimStatus     @default(QUEUED)
+  decision      Decision?       // null until pipeline completes
+  approvedAmount Decimal?       @db.Decimal(10, 2)
+  confidenceScore Float?        // 0.0 to 1.0
+
+  // ── Decision details ──
+  rejectionReasons  Json?       // string[] — e.g., ["WAITING_PERIOD", "EXCLUDED_CONDITION"]
+  decisionSummary   String?     // Human-readable explanation
+  financialBreakdown Json?      // { networkDiscount, copay, subLimitCap, lineItems, ... }
+
+  // ── Error info (when status = DOC_ERROR) ──
+  errorMessage  String?         // Specific, actionable error for the user
+  errorDetails  Json?           // Structured error data
+
+  // ── Trigger.dev integration ──
+  triggerTaskId String?         // Trigger.dev run ID for tracking
+
+  // ── Test/simulation flags ──
+  simulateFailure Boolean       @default(false) // TC011: simulate component failure
+  claimsHistory   Json?         // Past claims context injected for fraud detection (TC009)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ── Relations ──
+  documents ClaimDocument[]
+  traces    TraceEntry[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+/// A document attached to a claim (prescription, bill, lab report, etc.).
+/// Stores classification results and extracted structured data.
+model ClaimDocument {
+  id      String @id @default(uuid())
+  claimId String
+  claim   Claim  @relation(fields: [claimId], references: [id], onDelete: Cascade)
+
+  // ── File info ──
+  fileId   String          // Reference ID (e.g., "F001" from test cases)
+  fileName String
+  fileUrl  String         // Cloud storage URL (S3, Cloudinary, etc.)
+  mimeType String         // "image/jpeg", "application/pdf", etc.
+  fileSize Int            // File size in bytes
+
+  // ── Document classification (Agent 1) ──
+  declaredType  DocumentType   // What the user said it is (optional)
+  detectedType  DocumentType    @default(UNKNOWN) // What the AI classified it as
+  qualityNotes  String?         // e.g., "Image is blurry, text partially unreadable"
+
+  // ── Extracted data (Agent 2) ──
+  extractedData    Json?        // Full structured extraction from the document
+  patientNameOnDoc String?      // For cross-document patient consistency check (TC003)
+  extractionConfidence Float?   // Per-document extraction confidence
+
+  createdAt DateTime @default(now())
+
+  @@index([claimId])
+}
+
+/// An audit trail entry from one agent in the processing pipeline.
+/// Each claim produces 1-6 trace entries (one per agent that ran).
+/// This is the core of the observability system (20% eval weight).
+model TraceEntry {
+  id      String @id @default(uuid())
+  claimId String
+  claim   Claim  @relation(fields: [claimId], references: [id], onDelete: Cascade)
+
+  // ── Which agent and ordering ──
+  agentName AgentName
+  stepOrder Int             // 1 = verifier, 2 = parser, 3 = policy, 4 = financial, 5 = fraud, 6 = aggregator
+
+  // ── Execution result ──
+  status    TraceStatus     @default(RUNNING)
+
+  // ── What the agent did ──
+  input     Json?           // What was passed to the agent
+  output    Json?           // What the agent produced
+  checks    Json?           // Array of { check: string, passed: boolean, reason: string }
+
+  // ── Performance ──
+  durationMs    Int?        // How long the agent took
+  tokenUsage    Json?       // { promptTokens, completionTokens, totalTokens }
+
+  // ── Confidence ──
+  confidenceScore Float?    // Agent-level confidence (contributes to final score)
+
+  // ── Error info (when status = ERROR or FAIL) ──
+  errorMessage String?
+  errorStack   String?      // For debugging
+
+  createdAt DateTime @default(now())
+
+  @@index([claimId])
+  @@index([claimId, stepOrder]) // For ordered trace retrieval
+  @@index([agentName])
+}
