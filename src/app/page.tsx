@@ -1,69 +1,62 @@
-import Image from "next/image";
+'use client'
 
-export default function Home() {
-  return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
-  );
+import { useState } from 'react'
+import { AlertTriangle, ArrowUpRight, Bell, Check, ChevronDown, CircleHelp, ClipboardCheck, Clock3, FileCheck2, FileText, Filter, Headphones, LayoutDashboard, MoreHorizontal, Paperclip, Play, Plus, Search, Settings2, ShieldCheck, Sparkles, Upload, UserRound, UsersRound, X } from 'lucide-react'
+import policy from '../../policy_terms.json'
+import { NewClaim } from '@/components/NewClaim'
+const claims = [
+  { id: 'CLM-24091', member: 'Rajesh Kumar', initials: 'RK', type: 'Consultation', amount: '₹1,800', decision: 'APPROVED', score: '96%', time: '12 min ago' },
+  { id: 'CLM-24090', member: 'Priya Singh', initials: 'PS', type: 'Diagnostic', amount: '₹14,200', decision: 'PARTIAL', score: '88%', time: '28 min ago' },
+  { id: 'CLM-24089', member: 'Amit Verma', initials: 'AV', type: 'Pharmacy', amount: '₹3,460', decision: 'MANUAL_REVIEW', score: '71%', time: '1 hr ago' },
+  { id: 'CLM-24088', member: 'Sneha Reddy', initials: 'SR', type: 'Dental', amount: '₹8,500', decision: 'REJECTED', score: '98%', time: '2 hrs ago' },
+  { id: 'CLM-24087', member: 'Vikram Joshi', initials: 'VJ', type: 'Consultation', amount: '₹2,100', decision: 'APPROVED', score: '94%', time: '3 hrs ago' },
+]
+
+const trace = [
+  { title: 'Claim received', desc: 'Payload validated · CLM-24091', time: '10:41:02', state: 'done', icon: ClipboardCheck },
+  { title: 'Documents verified', desc: '1 of 1 required document found · Hospital bill', time: '10:41:04', state: 'done', icon: FileCheck2 },
+  { title: 'Information extracted', desc: 'Patient, provider, line items and total identified', time: '10:41:12', state: 'done', icon: Sparkles },
+  { title: 'Policy rules evaluated', desc: 'Consultation coverage · ₹2,000 sub-limit · 10% co-pay', time: '10:41:13', state: 'done', icon: ShieldCheck },
+  { title: 'Decision generated', desc: 'Approved ₹1,620 after applicable co-pay', time: '10:41:13', state: 'done', icon: Check },
+]
+
+function StatusBadge({ status }: { status: string }) {
+  const styles: Record<string, string> = { APPROVED: 'badge approved', PARTIAL: 'badge partial', REJECTED: 'badge rejected', MANUAL_REVIEW: 'badge review' }
+  return <span className={styles[status] || 'badge'}>{status.replace('_', ' ')}</span>
 }
+
+function Sidebar({ active, setActive }: { active: string; setActive: (v: string) => void }) {
+  const items = [
+    { label: 'Overview', icon: LayoutDashboard }, { label: 'Claims inbox', icon: FileText, count: '24' },
+    { label: 'Evaluation', icon: ClipboardCheck }, { label: 'Policy rules', icon: ShieldCheck },
+  ]
+  return <aside className="sidebar">
+    <div className="brand"><div className="brand-mark">P</div><span>plum<span className="brand-dot">.</span></span></div>
+    <div className="workspace-label">WORKSPACE</div>
+    <nav>{items.map(({ label, icon: Icon, count }) => <button key={label} className={`nav-item ${active === label ? 'active' : ''}`} onClick={() => setActive(label)}><Icon />{label}{count && <span className="nav-count">{count}</span>}</button>)}</nav>
+    <div className="sidebar-bottom"><button className="nav-item"><Settings2 />Settings</button><button className="nav-item"><CircleHelp />Help center</button><div className="profile"><div className="avatar dark">AS</div><div><strong>Ananya Shah</strong><small>Operations lead</small></div><MoreHorizontal className="more" /></div></div>
+  </aside>
+}
+
+function Header({ active }: { active: string }) { return <header className="topbar"><div><div className="crumb">Operations <span>/</span> {active}</div><h1>{active === 'Overview' ? 'Good morning, Ananya' : active}</h1></div><div className="top-actions"><button className="icon-button"><Search /></button><button className="icon-button notification"><Bell /><i /></button><div className="divider" /><button className="policy-pill"><span className="live-dot" /> Policy: Standard Plan <ChevronDown /></button></div></header> }
+
+function StatCard({ label, value, sub, icon: Icon, tone }: { label: string; value: string; sub: string; icon: any; tone: string }) { return <div className="stat-card"><div className={`stat-icon ${tone}`}><Icon /></div><div><p>{label}</p><strong>{value}</strong><small>{sub}</small></div><ArrowUpRight className="stat-arrow" /></div> }
+
+function Overview({ onNewClaim }: { onNewClaim: () => void }) { const [selected, setSelected] = useState(claims[0]); return <div className="page-content">
+  <div className="overview-actions"><div><p className="eyebrow">Tuesday, 18 June 2024</p><p className="muted">Here&apos;s what&apos;s happening across your claims workspace.</p></div><button className="primary-button" onClick={onNewClaim}><Plus /> New claim</button></div>
+  <div className="stats-grid"><StatCard label="Claims processed" value="1,284" sub="+12.8% vs last month" icon={FileCheck2} tone="blue" /><StatCard label="Auto-approved" value="78.4%" sub="+4.2% vs last month" icon={Check} tone="green" /><StatCard label="Needs review" value="24" sub="8 high priority" icon={Clock3} tone="amber" /><StatCard label="Avg. processing time" value="3m 42s" sub="-18% vs last month" icon={Sparkles} tone="violet" /></div>
+  <div className="main-grid"><section className="panel claims-panel"><div className="panel-heading"><div><h2>Recent claims</h2><p>Latest activity from your workspace</p></div><button className="text-button">View all <ArrowUpRight /></button></div><div className="table-tools"><div className="search-field"><Search /><input placeholder="Search claims" /></div><button className="filter-button"><Filter /> Filter</button></div><div className="claims-table"><div className="table-row table-head"><span>Claim ID</span><span>Member</span><span>Type</span><span>Amount</span><span>Decision</span><span>Confidence</span><span /></div>{claims.map(claim => <button className={`table-row claim-row ${selected.id === claim.id ? 'selected' : ''}`} key={claim.id} onClick={() => setSelected(claim)}><span className="claim-id">{claim.id}</span><span className="member-cell"><span className="avatar">{claim.initials}</span><span>{claim.member}</span></span><span className="muted-cell">{claim.type}</span><span className="amount">{claim.amount}</span><span><StatusBadge status={claim.decision} /></span><span className="confidence"><span className="confidence-bar"><i style={{ width: claim.score }} /></span>{claim.score}</span><MoreHorizontal className="row-more" /></button>)}</div></section><DecisionPanel claim={selected} /></div>
+  <div className="bottom-grid"><section className="panel"><div className="panel-heading"><div><h2>Processing activity</h2><p>System health across the last 24 hours</p></div><span className="healthy"><i /> All systems operational</span></div><div className="activity-chart"><div className="y-labels"><span>100</span><span>75</span><span>50</span><span>25</span><span>0</span></div><div className="chart-area"><div className="grid-lines" /> <svg viewBox="0 0 600 150" preserveAspectRatio="none"><path d="M0 112 C45 110 58 90 90 98 S135 123 166 82 S214 90 246 68 S290 92 318 60 S365 65 400 44 S455 73 485 35 S540 42 600 18" fill="none" stroke="#1d8a78" strokeWidth="3" /><path d="M0 112 C45 110 58 90 90 98 S135 123 166 82 S214 90 246 68 S290 92 318 60 S365 65 400 44 S455 73 485 35 S540 42 600 18 V150 H0Z" fill="url(#fade)" opacity=".18" /><defs><linearGradient id="fade" x1="0" x2="0" y1="0" y2="1"><stop stopColor="#1d8a78" /><stop offset="1" stopColor="#1d8a78" stopOpacity="0" /></linearGradient></defs></svg><div className="x-labels"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>Now</span></div></div></div></section><section className="panel quick-panel"><div className="panel-heading"><div><h2>Quick actions</h2><p>Common operator workflows</p></div></div><button className="quick-action" onClick={onNewClaim}><span className="quick-icon teal"><Upload /></span><span><strong>Submit a claim</strong><small>Start a new claim review</small></span><ArrowUpRight /></button><button className="quick-action"><span className="quick-icon purple"><ClipboardCheck /></span><span><strong>Run evaluation suite</strong><small>Test against 12 scenarios</small></span><ArrowUpRight /></button><button className="quick-action"><span className="quick-icon orange"><FileText /></span><span><strong>View policy rules</strong><small>Standard Plan · v2024.1</small></span><ArrowUpRight /></button></section></div>
+</div> }
+
+function DecisionPanel({ claim }: { claim: typeof claims[0] }) { return <section className="panel decision-panel"><div className="panel-heading"><div><h2>Decision preview</h2><p>{claim.id} · selected claim</p></div><button className="icon-button"><MoreHorizontal /></button></div><div className="decision-hero"><div><span className="decision-label">FINAL DECISION</span><h3><StatusBadge status={claim.decision} /></h3></div><div className="approved-amount"><span>Approved amount</span><strong>{claim.decision === 'REJECTED' ? '₹0' : claim.amount}</strong></div></div><div className="confidence-card"><div><span>Confidence score</span><strong>{claim.score}</strong></div><div className="large-bar"><i style={{ width: claim.score }} /></div><p>High confidence · all required evidence found</p></div><div className="reason"><strong>Why this decision?</strong><p>Consultation is covered under the member&apos;s policy. The claimed amount is within the ₹2,000 sub-limit and the applicable 10% co-pay has been applied.</p></div><button className="outline-button full" onClick={() => window.dispatchEvent(new CustomEvent('show-trace'))}>View full processing trace <ArrowUpRight /></button></section> }
+
+function TraceModal({ close }: { close: () => void }) { return <div className="modal-backdrop"><div className="trace-modal"><div className="modal-header"><div><p className="eyebrow">AUDIT TRAIL · CLM-24091</p><h2>Processing trace</h2><p>Every step captured for explainable review.</p></div><button className="icon-button" onClick={close}><X /></button></div><div className="trace-summary"><div><span>Decision</span><StatusBadge status="APPROVED" /></div><div><span>Approved</span><strong>₹1,620</strong></div><div><span>Confidence</span><strong className="green-text">96%</strong></div></div><div className="trace-list">{trace.map((item, index) => { const Icon = item.icon; return <div className="trace-item" key={item.title}><div className="trace-line"><div className="trace-icon"><Icon /></div>{index < trace.length - 1 && <i />}</div><div className="trace-copy"><div><strong>{item.title}</strong><time>{item.time}</time></div><p>{item.desc}</p><span className="trace-status"><Check /> Completed</span></div></div>})}</div><div className="trace-footer"><span><ShieldCheck /> Immutable audit record</span><button className="outline-button">Export trace <ArrowUpRight /></button></div></div></div> }
+
+function Evaluation() { return <div className="page-content"><div className="overview-actions"><div><p className="eyebrow">QUALITY CONTROL</p><h2 className="page-title">Evaluation suite</h2><p className="muted">Measure decision quality against your golden test cases.</p></div><button className="primary-button"><Play /> Run all tests</button></div><div className="eval-summary"><div><span>Overall accuracy</span><strong>91.7%</strong><small>11 of 12 matched</small></div><div><span>Document checks</span><strong>100%</strong><small>All early stops caught</small></div><div><span>Avg. confidence</span><strong>89.4%</strong><small>Across all decisions</small></div><div><span>Last run</span><strong>2 min ago</strong><small>v0.8.2 · Standard Plan</small></div></div><section className="panel eval-table"><div className="panel-heading"><div><h2>Test cases</h2><p>Decision output compared with expected outcome</p></div><button className="filter-button"><Filter /> Filter</button></div>{['TC-001 · Valid consultation approval','TC-002 · Missing prescription caught early','TC-003 · Diagnostic over sub-limit','TC-004 · Dental exclusion','TC-005 · Pharmacy generic mandate','TC-006 · Waiting period violation'].map((t, i) => <div className="eval-row" key={t}><span className="eval-check">{i === 5 ? <AlertTriangle /> : <Check />}</span><span><strong>{t}</strong><small>Completed in {i === 1 ? '0.8s' : '3.4s'} · Full trace available</small></span><StatusBadge status={i === 3 ? 'REJECTED' : i === 2 ? 'PARTIAL' : 'APPROVED'} /><span className="match">{i === 5 ? 'Review' : 'Matched'} <ArrowUpRight /></span></div>)}</section></div> }
+
+export default function Page() { const [active, setActive] = useState('Overview'); const [newClaim, setNewClaim] = useState(false); const [traceOpen, setTraceOpen] = useState(false); return <div className="app-shell"><Sidebar active={active} setActive={setActive} /><main className="main-area"><Header active={active} />{active === 'Overview' && <Overview onNewClaim={() => setNewClaim(true)} />}{active === 'Evaluation' && <Evaluation />}{active === 'Claims inbox' && <Overview onNewClaim={() => setNewClaim(true)} />}{active === 'Policy rules' && <PolicyView />}</main>{newClaim && <NewClaim close={() => setNewClaim(false)} />}{traceOpen && <TraceModal close={() => setTraceOpen(false)} />}</div> }
+
+function PolicyView() { return <div className="page-content"><div className="overview-actions"><div><p className="eyebrow">POLICY CONFIGURATION</p><h2 className="page-title">{policy.policy_name}</h2><p className="muted">{policy.insurer} · {policy.policy_id}</p></div><button className="outline-button"><Settings2 /> Edit policy</button></div><div className="policy-grid"><div className="panel policy-overview"><h2>Coverage overview</h2><div className="policy-number"><span>Sum insured per employee</span><strong>₹5,00,000</strong></div><div className="policy-number"><span>Annual OPD limit</span><strong>₹50,000</strong></div><div className="policy-number"><span>Family floater</span><strong>₹1,50,000</strong></div></div><div className="panel policy-overview"><h2>Plan status</h2><div className="plan-status"><span className="live-dot" /> Active</div><p>Policy period</p><strong>01 Apr 2024 — 31 Mar 2025</strong><p className="muted">{policy.policy_holder.company_name} · {policy.policy_holder.employee_count} employees</p></div></div><section className="panel"><div className="panel-heading"><div><h2>OPD categories</h2><p>Rules applied during automated evaluation</p></div></div><div className="category-grid">{Object.entries(policy.opd_categories).map(([key, value]: [string, any]) => <div className="category-card" key={key}><div className="category-top"><strong>{key.replace('_', ' ')}</strong><span className="badge approved">Covered</span></div><div><span>Sub-limit</span><strong>₹{value.sub_limit.toLocaleString('en-IN')}</strong></div><div><span>Co-pay</span><strong>{value.copay_percent}%</strong></div><div><span>Prescription</span><strong>{value.requires_prescription ? 'Required' : 'Not required'}</strong></div></div>)}</div></section></div> }
+
+if (typeof window !== 'undefined') window.addEventListener('show-trace', () => {})
