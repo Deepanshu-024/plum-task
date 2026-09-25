@@ -9,6 +9,8 @@ export function NewClaim({ close }: { close: () => void }) {
   const [files, setFiles] = useState<Record<string, File>>({});
   const [submitted, setSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [claimId, setClaimId] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   // Create a ref map for each slot
   const fileInputRefs = useRef<Record<string, HTMLInputElement>>({});
@@ -16,12 +18,14 @@ export function NewClaim({ close }: { close: () => void }) {
   const handleFileChange = (docType: string, e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setFiles((prev) => ({ ...prev, [docType]: e.target.files![0] }));
+      setAiError(null); // Clear error when user changes a file
     }
   };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setAiError(null);
 
     try {
       const uploadedBlobs = [];
@@ -54,6 +58,7 @@ export function NewClaim({ close }: { close: () => void }) {
 
       const formData = new FormData(e.currentTarget as HTMLFormElement);
       const payload = {
+        claimId,
         employeeId: formData.get('employeeId'),
         policyId: formData.get('policyId'),
         claimCategory: formData.get('claimCategory'),
@@ -71,13 +76,15 @@ export function NewClaim({ close }: { close: () => void }) {
 
       if (!claimRes.ok) {
         const err = await claimRes.json();
+        if (err.claimId) setClaimId(err.claimId);
+        setAiError(err.error || 'Failed to submit claim');
         throw new Error(err.error || 'Failed to create claim');
       }
 
       setSubmitted(true);
     } catch (error) {
-      console.error('Error during upload:', error);
-      alert('Failed to submit claim. Check console for details.');
+      console.error('Error during submit:', error);
+      // alert('Failed to submit claim. Check console for details.');
     } finally {
       setIsSubmitting(false);
     }
@@ -100,13 +107,18 @@ export function NewClaim({ close }: { close: () => void }) {
         </div>
         {submitted ? (
           <div className="success-state">
-            <div className="success-icon"><Check /></div>
-            <h3>Claim submitted successfully</h3>
-            <p>Your claim is now in the processing queue. We&apos;ll notify you when a decision is ready.</p>
+            <div className="success-icon"><ShieldCheck size={28} /></div>
+            <h3>Documents Accepted</h3>
+            <p>Your documents passed initial AI verification. The claim is now processing.</p>
             <button className="primary-button" onClick={close} type="button">Back to overview</button>
           </div>
         ) : (
           <form onSubmit={handleSubmit}>
+            {aiError && (
+              <div style={{ margin: '20px 28px 0', padding: '12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', color: '#991b1b', fontSize: '12px' }}>
+                <strong>Verification Failed:</strong> {aiError}
+              </div>
+            )}
             <div className="form-grid">
               <label>Member ID<input required name="employeeId" placeholder="e.g. EMP001" /></label>
               <label>Policy ID<input required name="policyId" defaultValue="PLUM_GHI_2024" /></label>
