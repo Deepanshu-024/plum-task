@@ -76,10 +76,9 @@ export async function POST(request: Request) {
       aiOutput = await verifyDocuments(documents);
     } catch (aiError) {
       console.error('Agent 1 AI Error:', aiError);
-      // Failsafe: if OpenAI errors out (e.g. unsupported PDF), fail the verification
       aiOutput = {
         isAccepted: false,
-        reasoning: "Failed to run AI verification on documents. They might be unsupported formats like PDF or too large.",
+        reasoning: "Failed to run AI verification on documents. They might be unsupported formats or too large.",
         documents: []
       };
     }
@@ -103,10 +102,26 @@ export async function POST(request: Request) {
         where: { id: claim.id },
         data: { status: 'DOC_ERROR' }
       });
-      return NextResponse.json({ error: reasoning, claimId: claim.id }, { status: 400 });
+
+      // Build per-document feedback for the frontend
+      const failedDocs = analyzedDocs
+        .filter((d: any) => !d.matchesDeclaredType || !d.isReadable)
+        .map((d: any) => ({
+          declaredType: d.declaredType,
+          detectedType: d.detectedType,
+          matchesDeclaredType: d.matchesDeclaredType,
+          isReadable: d.isReadable,
+          reasoning: d.reasoning,
+        }));
+
+      return NextResponse.json({
+        error: reasoning,
+        claimId: claim.id,
+        failedDocs,
+      }, { status: 400 });
     }
 
-    // AI Passed: Sync the documents
+    // All docs passed — sync to database
     await prisma.claimDocument.deleteMany({
       where: { claimId: claim.id }
     });
@@ -123,7 +138,6 @@ export async function POST(request: Request) {
           fileSize: doc.fileSize || 0,
           declaredType: doc.declaredType,
           detectedType: analysis?.detectedType || 'UNKNOWN',
-          qualityNotes: analysis?.qualityNotes || null,
         };
       })
     });
