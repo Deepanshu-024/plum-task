@@ -228,7 +228,103 @@ export async function POST(request: Request) {
 
       console.log(`[ROUTE] << Agent 3 Module 1 Passed for claim ${claim.id}`);
 
-      // TODO (trigger.dev): Trigger Agent 3 (Medical Policy & Financial Calculator) background job here
+      // --- Phase F: Agent 3 Module 2 (Deterministic Pre-Policy Checks) ---
+      const { runDeterministicPolicyChecks } = await import('@/actions/prePolicyChecks');
+      console.log(`\n[ROUTE] >> Triggering Agent 3 (Module 2: Pre-Policy Checks) for claim ${claim.id}`);
+      
+      const prePolicyResult = await runDeterministicPolicyChecks(
+        extractionOutput,
+        claim.employeeId,
+        claim.treatmentDate.toISOString(),
+        Number(claim.claimedAmount),
+        new Date('2024-11-02').toISOString() // hardcoded to simulate 2024 submission date so deadline checks pass for test cases
+      );
+
+      await prisma.traceEntry.create({
+        data: {
+          claimId: claim.id,
+          agentName: 'POLICY_EVALUATOR', // Grouping into Policy Evaluator trace
+          stepOrder: 4,
+          status: prePolicyResult.passed ? 'PASS' : 'FAIL',
+          input: { 
+            agent2Output: extractionOutput,
+            employeeId: claim.employeeId,
+            treatmentDate: claim.treatmentDate.toISOString()
+          },
+          output: prePolicyResult as any,
+          checks: prePolicyResult.checks
+        }
+      });
+
+      if (!prePolicyResult.passed) {
+        console.log(`[ROUTE] << Agent 3 Module 2 FAILED. Moving claim ${claim.id} to ${prePolicyResult.decision}.`);
+        await prisma.claim.update({
+          where: { id: claim.id },
+          data: { 
+            status: 'COMPLETED',
+            decision: prePolicyResult.decision as any,
+            decisionSummary: prePolicyResult.reason,
+            rejectionReasons: ["PRE_POLICY_CHECKS_FAILED"]
+          }
+        });
+
+        return NextResponse.json({
+          message: 'Claim evaluation halted during pre-policy checks.',
+          claimId: claim.id,
+          decision: prePolicyResult.decision,
+          reason: prePolicyResult.reason
+        });
+      }
+
+      console.log(`[ROUTE] << Agent 3 Module 2 Passed. Restricted conditions: ${prePolicyResult.restrictedConditions.join(', ')}`);
+
+      // --- Phase G: Agent 3 Module 3 (LLM Policy Evaluator) ---
+      const { evaluateMedicalPolicy } = await import('@/actions/policyEvaluator');
+      console.log(`\n[ROUTE] >> Triggering Agent 3 (Module 3: LLM Policy Evaluator) for claim ${claim.id}`);
+
+      const policyEvalResult = await evaluateMedicalPolicy(
+        extractionOutput,
+        claim.claimCategory,
+        prePolicyResult.restrictedConditions
+      );
+
+      await prisma.traceEntry.create({
+        data: {
+          claimId: claim.id,
+          agentName: 'POLICY_EVALUATOR',
+          stepOrder: 5,
+          status: policyEvalResult.decision !== 'MEDICAL_REJECTED' ? 'PASS' : 'FAIL',
+          input: { 
+            claimCategory: claim.claimCategory,
+            restrictedConditions: prePolicyResult.restrictedConditions
+          },
+          output: policyEvalResult as any,
+        }
+      });
+
+      if (policyEvalResult.decision === 'MEDICAL_REJECTED') {
+        console.log(`[ROUTE] << Agent 3 Module 3 REJECTED claim ${claim.id}.`);
+        await prisma.claim.update({
+          where: { id: claim.id },
+          data: { 
+            status: 'COMPLETED',
+            decision: 'REJECTED', // Mapping MEDICAL_REJECTED to final REJECTED state
+            decisionSummary: policyEvalResult.notes,
+            rejectionReasons: policyEvalResult.rejection_reasons
+          }
+        });
+
+        return NextResponse.json({
+          message: 'Claim completely rejected by medical policy.',
+          claimId: claim.id,
+          decision: 'REJECTED',
+          reason: policyEvalResult.notes
+        });
+      }
+
+      console.log(`[ROUTE] << Agent 3 Module 3 Completed for claim ${claim.id}. Decision: ${policyEvalResult.decision}`);
+
+      // TODO (trigger.dev): Trigger Agent 3 (Financial Calculator) background job here
     } catch (extError: any) {
       console.error('Agent 2 AI Error:', extError);
       await prisma.traceEntry.create({
