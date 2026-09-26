@@ -59,8 +59,9 @@ async function verifySingleDocument(doc: { url: string; declaredType: string }):
             - If it IS a ${doc.declaredType} and readable enough to extract info from (even if image quality is poor), ACCEPT it.`
           },
           {
-            type: 'image',
-            image: new URL(doc.url),
+            type: 'file',
+            data: new URL(doc.url),
+            mediaType: 'image/jpeg',
           }
         ]
       }

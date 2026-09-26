@@ -149,6 +149,100 @@ export async function POST(request: Request) {
       data: { status: 'PROCESSING' }
     });
 
+    // --- Phase D: Run Agent 2 (Information Extraction) ---
+    // TODO (trigger.dev): In the future, the below block should be moved into a background job 
+    // triggered via trigger.dev to avoid Vercel edge/lambda timeout issues, as AI extraction can be slow.
+    // e.g., await trigger.sendEvent({ name: "extract.data", payload: { claimId: claim.id, documents } })
+    
+    const { extractAllClaimData } = await import('@/agents/informationExtractor');
+
+    // Build the array of VerifiedDocuments
+    const verifiedDocuments = documents.map((doc: any, index: number) => ({
+      url: doc.url,
+      detectedType: analyzedDocs[index]?.detectedType || 'UNKNOWN',
+      mimeType: doc.mimeType || 'application/pdf'
+    }));
+
+    try {
+      console.log(`\n[ROUTE] >> Triggering Agent 2 for claim ${claim.id} with ${verifiedDocuments.length} docs`);
+      const extractionOutput = await extractAllClaimData(verifiedDocuments);
+      console.log(`[ROUTE] << Agent 2 completed for claim ${claim.id}`);
+      
+      // Audit Trail for Agent 2: Create individual traces for each sub-agent extraction
+      for (const result of extractionOutput.rawExtractions) {
+        if (!result) continue; // Skip any failed dispatches that returned null
+        
+        await prisma.traceEntry.create({
+          data: {
+            claimId: claim.id,
+            agentName: 'DOCUMENT_PARSER',
+            stepOrder: 2,
+            status: 'PASS', // Assuming passed if we reached here
+            input: { 
+              url: result.url,
+              agentType: result.type 
+            },
+            output: result.data as any,
+          }
+        });
+      }
+      
+      // --- Phase E: Run Agent 3 Module 1 (Pre-Evaluation Checks) ---
+      const { preEvaluationCheck } = await import('@/actions/preEvaluationCheck');
+      console.log(`\n[ROUTE] >> Triggering Agent 3 (Module 1: Pre-Evaluation) for claim ${claim.id}`);
+      
+      const preEvalResult = await preEvaluationCheck(extractionOutput);
+
+      await prisma.traceEntry.create({
+        data: {
+          claimId: claim.id,
+          agentName: 'POLICY_EVALUATOR', // Currently acting as the entry point for Policy Evaluator
+          stepOrder: 3,
+          status: preEvalResult.passed ? 'PASS' : 'FAIL',
+          input: { agent2Output: extractionOutput },
+          output: preEvalResult as any,
+          checks: preEvalResult.checks
+        }
+      });
+
+      if (!preEvalResult.passed) {
+        // Pre-evaluation checks failed. Mark claim as completed with MANUAL_REVIEW.
+        console.log(`[ROUTE] << Agent 3 Module 1 FAILED. Moving claim ${claim.id} to MANUAL_REVIEW.`);
+        await prisma.claim.update({
+          where: { id: claim.id },
+          data: { 
+            status: 'COMPLETED',
+            decision: 'MANUAL_REVIEW',
+            decisionSummary: preEvalResult.reason,
+            rejectionReasons: ["PRE_EVALUATION_FAILED"]
+          }
+        });
+
+        return NextResponse.json({
+          message: 'Claim moved to manual review during pre-evaluation.',
+          claimId: claim.id,
+          decision: 'MANUAL_REVIEW',
+          reason: preEvalResult.reason
+        });
+      }
+
+      console.log(`[ROUTE] << Agent 3 Module 1 Passed for claim ${claim.id}`);
+
+      // TODO (trigger.dev): Trigger Agent 3 (Medical Policy & Financial Calculator) background job here
+    } catch (extError: any) {
+      console.error('Agent 2 AI Error:', extError);
+      await prisma.traceEntry.create({
+        data: {
+          claimId: claim.id,
+          agentName: 'DOCUMENT_PARSER',
+          stepOrder: 2,
+          status: 'FAIL',
+          input: { verifiedDocuments },
+          output: { error: extError.message || "Extraction pipeline crashed" },
+        }
+      });
+    }
+
     return NextResponse.json({ success: true, claimId: claim.id });
   } catch (error: any) {
     console.error('Error handling claim:', error);
