@@ -11,6 +11,7 @@ export function NewClaim({ close }: { close: () => void }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [claimId, setClaimId] = useState<string | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [failedDocs, setFailedDocs] = useState<any[]>([]);
 
   // Create a ref map for each slot
   const fileInputRefs = useRef<Record<string, HTMLInputElement>>({});
@@ -19,13 +20,26 @@ export function NewClaim({ close }: { close: () => void }) {
     if (e.target.files && e.target.files[0]) {
       setFiles((prev) => ({ ...prev, [docType]: e.target.files![0] }));
       setAiError(null); // Clear error when user changes a file
+      setFailedDocs((prev) => prev.filter(d => d.declaredType !== docType));
     }
   };
 
-  const handleSubmit = async (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    
+    // Capture form data synchronously before any async operations
+    const formData = new FormData(e.currentTarget);
+    const payloadFields = {
+      employeeId: formData.get('employeeId'),
+      policyId: formData.get('policyId'),
+      claimCategory: formData.get('claimCategory'),
+      treatmentDate: formData.get('treatmentDate'),
+      claimedAmount: formData.get('claimedAmount'),
+    };
+
     setIsSubmitting(true);
     setAiError(null);
+    setFailedDocs([]);
 
     try {
       const uploadedBlobs = [];
@@ -56,15 +70,9 @@ export function NewClaim({ close }: { close: () => void }) {
 
       console.log('Successfully uploaded blobs with types:', uploadedBlobs);
 
-      const formData = new FormData(e.currentTarget as HTMLFormElement);
       const payload = {
         claimId,
-        employeeId: formData.get('employeeId'),
-        policyId: formData.get('policyId'),
-        claimCategory: formData.get('claimCategory'),
-        treatmentDate: formData.get('treatmentDate'),
-        claimedAmount: formData.get('claimedAmount'),
-        // hospitalName: formData.get('hospitalName') || null,
+        ...payloadFields,
         documents: uploadedBlobs,
       };
 
@@ -77,6 +85,7 @@ export function NewClaim({ close }: { close: () => void }) {
       if (!claimRes.ok) {
         const err = await claimRes.json();
         if (err.claimId) setClaimId(err.claimId);
+        if (err.failedDocs) setFailedDocs(err.failedDocs);
         setAiError(err.error || 'Failed to submit claim');
         throw new Error(err.error || 'Failed to create claim');
       }
@@ -115,8 +124,9 @@ export function NewClaim({ close }: { close: () => void }) {
         ) : (
           <form onSubmit={handleSubmit}>
             {aiError && (
-              <div style={{ margin: '20px 28px 0', padding: '12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', color: '#991b1b', fontSize: '12px' }}>
+              <div style={{ margin: '20px 28px 0', padding: '12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', color: '#991b1b', fontSize: '13px' }}>
                 <strong>Verification Failed:</strong> {aiError}
+                {failedDocs.length > 0 && <div style={{marginTop: '4px', opacity: 0.8}}>Please review the specific document feedback below and re-upload.</div>}
               </div>
             )}
             <div className="form-grid">
@@ -144,15 +154,22 @@ export function NewClaim({ close }: { close: () => void }) {
               <div className="document-slots" style={{ marginTop: '20px' }}>
                 <h4 style={{ fontSize: '11px', textTransform: 'uppercase', color: '#667688', margin: '0 28px 8px', fontWeight: 700 }}>Required Documents</h4>
                 <div className="file-list" style={{ paddingBottom: '0' }}>
-                  {currentReqs.required.map((docType: string) => (
-                    <div key={docType} className="file-item" style={{ marginBottom: '8px' }}>
-                      <FileText style={{ color: files[docType] ? '#1f917b' : undefined }} />
-                      <span>
+                  {currentReqs.required.map((docType: string) => {
+                    const feedback = failedDocs.find(d => d.declaredType === docType);
+                    return (
+                    <div key={docType} className="file-item" style={{ marginBottom: '8px', border: feedback ? '1px solid #fecaca' : undefined, background: feedback ? '#fff5f5' : undefined }}>
+                      <FileText style={{ color: files[docType] && !feedback ? '#1f917b' : undefined }} />
+                      <span style={{flex: 1}}>
                         <strong>{docType.split('_').map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(' ')}</strong>
                         {files[docType] ? (
-                          <small style={{ color: '#1f917b' }}>{files[docType].name} ({(files[docType].size / (1024 * 1024)).toFixed(2)} MB)</small>
+                          <small style={{ color: feedback ? '#991b1b' : '#1f917b', display: 'block' }}>{files[docType].name} ({(files[docType].size / (1024 * 1024)).toFixed(2)} MB)</small>
                         ) : (
-                          <small style={{ color: '#c55c5c' }}>Missing required file</small>
+                          <small style={{ color: '#c55c5c', display: 'block' }}>Missing required file</small>
+                        )}
+                        {feedback && (
+                          <div style={{ marginTop: '4px', fontSize: '12px', color: '#991b1b' }}>
+                            ⚠ {feedback.reasoning}
+                          </div>
                         )}
                       </span>
                       <input
@@ -166,22 +183,29 @@ export function NewClaim({ close }: { close: () => void }) {
                         {files[docType] ? 'Change' : 'Upload'}
                       </button>
                     </div>
-                  ))}
+                  )})}
                 </div>
 
                 {currentReqs.optional.length > 0 && (
                   <>
                     <h4 style={{ fontSize: '11px', textTransform: 'uppercase', color: '#667688', margin: '12px 28px 8px', fontWeight: 700 }}>Optional Documents</h4>
                     <div className="file-list" style={{ paddingTop: '0' }}>
-                      {currentReqs.optional.map((docType: string) => (
-                        <div key={docType} className="file-item" style={{ marginBottom: '8px' }}>
-                          <FileText style={{ color: files[docType] ? '#1f917b' : undefined }} />
-                          <span>
+                      {currentReqs.optional.map((docType: string) => {
+                        const feedback = failedDocs.find(d => d.declaredType === docType);
+                        return (
+                        <div key={docType} className="file-item" style={{ marginBottom: '8px', border: feedback ? '1px solid #fecaca' : undefined, background: feedback ? '#fff5f5' : undefined }}>
+                          <FileText style={{ color: files[docType] && !feedback ? '#1f917b' : undefined }} />
+                          <span style={{flex: 1}}>
                             <strong>{docType.split('_').map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(' ')}</strong>
                             {files[docType] ? (
-                              <small style={{ color: '#1f917b' }}>{files[docType].name} ({(files[docType].size / (1024 * 1024)).toFixed(2)} MB)</small>
+                              <small style={{ color: feedback ? '#991b1b' : '#1f917b', display: 'block' }}>{files[docType].name} ({(files[docType].size / (1024 * 1024)).toFixed(2)} MB)</small>
                             ) : (
-                              <small>Optional attachment</small>
+                              <small style={{ display: 'block' }}>Optional attachment</small>
+                            )}
+                            {feedback && (
+                              <div style={{ marginTop: '4px', fontSize: '12px', color: '#991b1b' }}>
+                                ⚠ {feedback.reasoning}
+                              </div>
                             )}
                           </span>
                           <input
@@ -195,7 +219,7 @@ export function NewClaim({ close }: { close: () => void }) {
                             {files[docType] ? 'Change' : 'Upload'}
                           </button>
                         </div>
-                      ))}
+                      )})}
                     </div>
                   </>
                 )}

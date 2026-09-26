@@ -105,14 +105,16 @@ export async function POST(request: Request) {
 
       // Build per-document feedback for the frontend
       const failedDocs = analyzedDocs
-        .filter((d: any) => !d.matchesDeclaredType || !d.isReadable)
-        .map((d: any) => ({
+        .map((d: any, i: number) => ({
+          url: documents[i].url,
+          fileName: documents[i].fileName || `Document ${i + 1}`,
           declaredType: d.declaredType,
           detectedType: d.detectedType,
           matchesDeclaredType: d.matchesDeclaredType,
           isReadable: d.isReadable,
           reasoning: d.reasoning,
-        }));
+        }))
+        .filter((d: any) => !d.matchesDeclaredType || !d.isReadable);
 
       return NextResponse.json({
         error: reasoning,

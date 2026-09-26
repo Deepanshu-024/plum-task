@@ -16,6 +16,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   // Using public access so the agent/dashboard can easily download/read the files
   const blob = await put(filename, request.body, {
     access: 'public',
+    addRandomSuffix: true,
   });
 
   return NextResponse.json(blob);
