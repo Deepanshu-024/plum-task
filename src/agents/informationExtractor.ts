@@ -1,44 +1,11 @@
 import { z } from 'zod';
 import { VerifiedDocument, PrescriptionSchema, HospitalBillSchema, LabReportSchema } from './schemas';
-import { extractPrescription } from './prescriptionAgent';
-import { extractHospitalBill } from './hospitalBillAgent';
-import { extractLabReport } from './labReportAgent';
-import { getMimeType } from './extractorUtils';
 
-// Re-export VerifiedDocument so other parts of the app (like route.ts) don't break
 export type { VerifiedDocument };
 
-/**
- * Runs individual extraction agents concurrently and merges the results 
- * into a single unified ClaimContext object for Agent 3 (Adjudication).
- */
-export async function extractAllClaimData(documents: VerifiedDocument[]) {
-  console.log(`\n[AGENT 2: EXTRACTOR] 🚀 Starting parallel extraction for ${documents.length} documents...`);
+export function aggregateExtractionResults(rawResults: any[]) {
+  console.log(`[AGENT 2: EXTRACTOR] ✅ Aggregating results for ${rawResults.length} documents...`);
 
-  // 1. Fire off all extractions concurrently based on document type
-  const extractionPromises = documents.map(async (doc) => {
-    const mimeType = getMimeType(doc.url, doc.mimeType);
-    console.log(`[AGENT 2: EXTRACTOR] Dispatching ${doc.detectedType} to appropriate LLM Agent...`);
-    
-    if (doc.detectedType === 'PRESCRIPTION') {
-      const data = await extractPrescription(doc.url, mimeType);
-      return { type: 'PRESCRIPTION', data, url: doc.url };
-    } 
-    else if (['HOSPITAL_BILL', 'PHARMACY_BILL', 'DENTAL_REPORT'].includes(doc.detectedType)) {
-      const data = await extractHospitalBill(doc.url, mimeType);
-      return { type: 'BILL', data, url: doc.url };
-    }
-    else if (['LAB_REPORT', 'DIAGNOSTIC_REPORT', 'DISCHARGE_SUMMARY'].includes(doc.detectedType)) {
-      const data = await extractLabReport(doc.url, mimeType);
-      return { type: 'REPORT', data, url: doc.url };
-    }
-    return null;
-  });
-
-  const rawResults = (await Promise.all(extractionPromises)).filter(Boolean);
-  console.log(`[AGENT 2: EXTRACTOR] ✅ All extraction tasks completed. Aggregating results...`);
-
-  // 2. Aggregate the data deterministically
   const aggregated = {
     patientNames: new Set<string>(),
     diagnoses: new Set<string>(),

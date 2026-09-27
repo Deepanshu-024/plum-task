@@ -5,7 +5,7 @@ import { Upload, Paperclip, FileText, Check, ShieldCheck, X, ArrowUpRight, Loade
 import policy from '../../policy_terms.json'
 
 export function NewClaim({ close }: { close: () => void }) {
-  const [category, setCategory] = useState<string>('');
+  const [category, setCategory] = useState<string>('CONSULTATION');
   const [files, setFiles] = useState<Record<string, File>>({});
   const [submitted, setSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -130,7 +130,7 @@ export function NewClaim({ close }: { close: () => void }) {
               </div>
             )}
             <div className="form-grid">
-              <label>Member ID<input required name="employeeId" placeholder="e.g. EMP001" /></label>
+              <label>Member ID<input required name="employeeId" defaultValue="EMP001" placeholder="e.g. EMP001" /></label>
               <label>Policy ID<input required name="policyId" defaultValue="PLUM_GHI_2024" /></label>
 
               <label>Treatment type
@@ -145,8 +145,8 @@ export function NewClaim({ close }: { close: () => void }) {
                 </select>
               </label>
 
-              <label>Treatment date<input required type="date" name="treatmentDate" /></label>
-              <label>Claimed amount (₹)<input required type="number" step="0.01" name="claimedAmount" placeholder="0.00" /></label>
+              <label>Treatment date<input required type="date" name="treatmentDate" defaultValue="2024-11-01" /></label>
+              <label>Claimed amount (₹)<input required type="number" step="0.01" name="claimedAmount" defaultValue="1500" placeholder="0.00" /></label>
               {/* <label>Hospital Name<input name="hospitalName" placeholder="Optional" /></label> */}
             </div>
 

@@ -154,7 +154,6 @@ export async function POST(request: Request) {
     // triggered via trigger.dev to avoid Vercel edge/lambda timeout issues, as AI extraction can be slow.
     // e.g., await trigger.sendEvent({ name: "extract.data", payload: { claimId: claim.id, documents } })
     
-    const { extractAllClaimData } = await import('@/agents/informationExtractor');
 
     // Build the array of VerifiedDocuments
     const verifiedDocuments = documents.map((doc: any, index: number) => ({
@@ -164,227 +163,39 @@ export async function POST(request: Request) {
     }));
 
     try {
-      console.log(`\n[ROUTE] >> Triggering Agent 2 for claim ${claim.id} with ${verifiedDocuments.length} docs`);
-      const extractionOutput = await extractAllClaimData(verifiedDocuments);
-      console.log(`[ROUTE] << Agent 2 completed for claim ${claim.id}`);
+      // --- Phase B: Hand off to Trigger.dev Background Worker ---
+      console.log(`\n[ROUTE] >> Handoff to Trigger.dev for claim ${claim.id}`);
       
-      // Audit Trail for Agent 2: Create individual traces for each sub-agent extraction
-      for (const result of extractionOutput.rawExtractions) {
-        if (!result) continue; // Skip any failed dispatches that returned null
-        
-        await prisma.traceEntry.create({
-          data: {
-            claimId: claim.id,
-            agentName: 'DOCUMENT_PARSER',
-            stepOrder: 2,
-            status: 'PASS', // Assuming passed if we reached here
-            input: { 
-              url: result.url,
-              agentType: result.type 
-            },
-            output: result.data as any,
-          }
-        });
-      }
+      const { processClaimTask } = await import('@/trigger/processClaim');
       
-      // --- Phase E: Run Agent 3 Module 1 (Pre-Evaluation Checks) ---
-      const { preEvaluationCheck } = await import('@/actions/preEvaluationCheck');
-      console.log(`\n[ROUTE] >> Triggering Agent 3 (Module 1: Pre-Evaluation) for claim ${claim.id}`);
-      
-      const preEvalResult = await preEvaluationCheck(extractionOutput);
-
-      await prisma.traceEntry.create({
-        data: {
-          claimId: claim.id,
-          agentName: 'POLICY_EVALUATOR', // Currently acting as the entry point for Policy Evaluator
-          stepOrder: 3,
-          status: preEvalResult.passed ? 'PASS' : 'FAIL',
-          input: { agent2Output: extractionOutput },
-          output: preEvalResult as any,
-          checks: preEvalResult.checks
-        }
-      });
-
-      if (!preEvalResult.passed) {
-        // Pre-evaluation checks failed. Mark claim as completed with MANUAL_REVIEW.
-        console.log(`[ROUTE] << Agent 3 Module 1 FAILED. Moving claim ${claim.id} to MANUAL_REVIEW.`);
-        await prisma.claim.update({
-          where: { id: claim.id },
-          data: { 
-            status: 'COMPLETED',
-            decision: 'MANUAL_REVIEW',
-            decisionSummary: preEvalResult.reason,
-            rejectionReasons: ["PRE_EVALUATION_FAILED"]
-          }
-        });
-
-        return NextResponse.json({
-          message: 'Claim moved to manual review during pre-evaluation.',
-          claimId: claim.id,
-          decision: 'MANUAL_REVIEW',
-          reason: preEvalResult.reason
-        });
-      }
-
-      console.log(`[ROUTE] << Agent 3 Module 1 Passed for claim ${claim.id}`);
-
-      // --- Phase F: Agent 3 Module 2 (Deterministic Pre-Policy Checks) ---
-      const { runDeterministicPolicyChecks } = await import('@/actions/prePolicyChecks');
-      console.log(`\n[ROUTE] >> Triggering Agent 3 (Module 2: Pre-Policy Checks) for claim ${claim.id}`);
-      
-      const prePolicyResult = await runDeterministicPolicyChecks(
-        claim.employeeId,
-        claim.treatmentDate.toISOString(),
-        Number(claim.claimedAmount),
-        new Date('2024-11-02').toISOString() // hardcoded to simulate 2024 submission date so deadline checks pass for test cases
-      );
-
-      await prisma.traceEntry.create({
-        data: {
-          claimId: claim.id,
-          agentName: 'POLICY_EVALUATOR', // Grouping into Policy Evaluator trace
-          stepOrder: 4,
-          status: prePolicyResult.passed ? 'PASS' : 'FAIL',
-          input: { 
-            agent2Output: extractionOutput,
-            employeeId: claim.employeeId,
-            treatmentDate: claim.treatmentDate.toISOString()
-          },
-          output: prePolicyResult as any,
-          checks: prePolicyResult.checks
-        }
-      });
-
-      if (!prePolicyResult.passed) {
-        console.log(`[ROUTE] << Agent 3 Module 2 FAILED. Moving claim ${claim.id} to ${prePolicyResult.decision}.`);
-        await prisma.claim.update({
-          where: { id: claim.id },
-          data: { 
-            status: 'COMPLETED',
-            decision: prePolicyResult.decision as any,
-            decisionSummary: prePolicyResult.reason,
-            rejectionReasons: ["PRE_POLICY_CHECKS_FAILED"]
-          }
-        });
-
-        return NextResponse.json({
-          message: 'Claim evaluation halted during pre-policy checks.',
-          claimId: claim.id,
-          decision: prePolicyResult.decision,
-          reason: prePolicyResult.reason
-        });
-      }
-
-      console.log(`[ROUTE] << Agent 3 Module 2 Passed. Restricted conditions: ${prePolicyResult.restrictedConditions.join(', ')}`);
-
-      // --- Phase G: Agent 3 Module 3 (LLM Policy Evaluator) ---
-      const { evaluateMedicalPolicy } = await import('@/actions/policyEvaluator');
-      console.log(`\n[ROUTE] >> Triggering Agent 3 (Module 3: LLM Policy Evaluator) for claim ${claim.id}`);
-
-      const policyEvalResult = await evaluateMedicalPolicy(
-        extractionOutput,
-        claim.claimCategory,
-        prePolicyResult.restrictedConditions
-      );
-
-      await prisma.traceEntry.create({
-        data: {
-          claimId: claim.id,
-          agentName: 'POLICY_EVALUATOR',
-          stepOrder: 5,
-          status: policyEvalResult.decision !== 'MEDICAL_REJECTED' ? 'PASS' : 'FAIL',
-          input: { 
-            claimCategory: claim.claimCategory,
-            restrictedConditions: prePolicyResult.restrictedConditions,
-            medicalData: {
-              diagnoses: extractionOutput.diagnoses,
-              treatments: extractionOutput.treatments,
-              investigations: extractionOutput.investigations,
-              lineItems: extractionOutput.lineItems
-            }
-          },
-          output: policyEvalResult as any,
-        }
-      });
-
-      if (policyEvalResult.decision === 'MEDICAL_REJECTED') {
-        console.log(`[ROUTE] << Agent 3 Module 3 REJECTED claim ${claim.id}.`);
-        await prisma.claim.update({
-          where: { id: claim.id },
-          data: { 
-            status: 'COMPLETED',
-            decision: 'REJECTED', // Mapping MEDICAL_REJECTED to final REJECTED state
-            decisionSummary: policyEvalResult.notes,
-            rejectionReasons: policyEvalResult.rejection_reasons
-          }
-        });
-
-        return NextResponse.json({
-          message: 'Claim completely rejected by medical policy.',
-          claimId: claim.id,
-          decision: 'REJECTED',
-          reason: policyEvalResult.notes
-        });
-      }
-
-      // --- Phase H: Agent 3 Module 4 (Financial Calculator) ---
-      const { calculateFinancialPayout } = await import('@/actions/financialCalculator');
-      console.log(`\n[ROUTE] >> Triggering Agent 3 (Module 4: Financial Calculator) for claim ${claim.id}`);
-
-      const financialResult = await calculateFinancialPayout(
-        policyEvalResult.approved_line_items,
-        claim.claimCategory
-      );
-
-      await prisma.traceEntry.create({
-        data: {
-          claimId: claim.id,
-          agentName: 'FINANCIAL_CALCULATOR',
-          stepOrder: 6,
-          status: 'PASS',
-          input: { 
-            approvedLineItems: policyEvalResult.approved_line_items,
-            claimCategory: claim.claimCategory
-          },
-          output: financialResult as any,
-          checks: [
-            { check: "Co-Pay Calculation", passed: true, reason: `Applied ${financialResult.appliedLimits.copayPercent}% copay.` },
-            { check: "Sub-Limit Enforcement", passed: financialResult.totalApprovedAmount - financialResult.copayAmount <= financialResult.appliedLimits.subLimit, reason: `Sub-limit is ₹${financialResult.appliedLimits.subLimit}` },
-            { check: "Global Limit Enforcement", passed: financialResult.payableAmount <= financialResult.appliedLimits.globalClaimLimit, reason: `Global limit is ₹${financialResult.appliedLimits.globalClaimLimit}` }
-          ]
-        }
-      });
-
-      console.log(`[ROUTE] << Agent 3 Module 4 Completed. Final Payable: ₹${financialResult.payableAmount}`);
-
-      const finalDecisionMap = {
-        'MEDICAL_APPROVED': 'APPROVED',
-        'PARTIAL_APPROVAL': 'PARTIAL',
-        'MEDICAL_REJECTED': 'REJECTED'
-      } as const;
-
+      // Update claim to PROCESSING state before kicking off the background job
       await prisma.claim.update({
         where: { id: claim.id },
-        data: { 
-          status: 'COMPLETED',
-          decision: finalDecisionMap[policyEvalResult.decision as keyof typeof finalDecisionMap] as any,
-          decisionSummary: `Claim Processed. ${financialResult.breakdown}. Medical notes: ${policyEvalResult.notes}`,
-          rejectionReasons: policyEvalResult.rejection_reasons,
-          approvedAmount: financialResult.payableAmount,
-          financialBreakdown: financialResult as any
-        }
+        data: { status: 'PROCESSING' }
+      });
+
+      // Fire and forget
+      const triggerRun = await processClaimTask.trigger({
+        claimId: claim.id,
+        employeeId: claim.employeeId,
+        treatmentDate: claim.treatmentDate.toISOString(),
+        claimedAmount: Number(claim.claimedAmount),
+        claimCategory: claim.claimCategory,
+        verifiedDocuments
+      });
+
+      console.log(`[ROUTE] << Trigger.dev task started with run ID: ${triggerRun.id}`);
+      
+      // Optional: Store the trigger run ID on the claim if we want to poll/cancel it later
+      await prisma.claim.update({
+        where: { id: claim.id },
+        data: { triggerTaskId: triggerRun.id }
       });
     } catch (extError: any) {
-      console.error('Agent AI Error:', extError);
-      await prisma.traceEntry.create({
-        data: {
-          claimId: claim.id,
-          agentName: 'DOCUMENT_PARSER',
-          stepOrder: 2,
-          status: 'FAIL',
-          input: { verifiedDocuments },
-          output: { error: extError.message || "Extraction pipeline crashed" },
-        }
+      console.error('Trigger Handoff Error:', extError);
+      await prisma.claim.update({
+        where: { id: claim.id },
+        data: { status: 'FAILED', errorMessage: extError.message || "Failed to trigger background processing" }
       });
     }
 
