@@ -1,16 +1,9 @@
 import { z } from 'zod';
 
 export const DocumentIntegritySchema = z.object({
-  is_original: z.boolean().nullable(),
   tampering_flags: z.array(z.string()),
   scan_quality: z.enum(["GOOD", "PARTIAL", "POOR", "UNREADABLE"]),
   physical_condition_flags: z.array(z.string()),
-  consistency_checks: z.object({
-    ink_consistency: z.enum(["CONSISTENT", "INCONSISTENT", "CANNOT_DETERMINE"]),
-    paper_background_consistency: z.enum(["CONSISTENT", "INCONSISTENT", "CANNOT_DETERMINE"]),
-    date_plausibility: z.enum(["PLAUSIBLE", "SUSPICIOUS", "CANNOT_DETERMINE"]),
-    amount_plausibility: z.enum(["PLAUSIBLE", "SUSPICIOUS", "CANNOT_DETERMINE"])
-  }),
   integrity_confidence: z.number().min(0).max(1)
 });
 

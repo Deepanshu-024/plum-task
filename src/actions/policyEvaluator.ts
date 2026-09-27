@@ -1,5 +1,3 @@
-'use server';
-
 import { generateObject } from 'ai';
 import { openai } from '@ai-sdk/openai';
 import { z } from 'zod';
@@ -7,7 +5,7 @@ import fs from 'fs';
 import path from 'path';
 
 // Schema for the Medical Policy Evaluator output
-export const PolicyEvaluatorSchema = z.object({
+const PolicyEvaluatorSchema = z.object({
   decision: z.enum(["MEDICAL_APPROVED", "MEDICAL_REJECTED", "PARTIAL_APPROVAL"]),
   approved_line_items: z.array(z.object({
     description: z.string(),
@@ -19,9 +17,9 @@ export const PolicyEvaluatorSchema = z.object({
     reason: z.string()
   })),
   rejection_reasons: z.array(z.enum([
-    "EXCLUDED_CONDITION", 
-    "WAITING_PERIOD", 
-    "PRE_AUTH_MISSING", 
+    "EXCLUDED_CONDITION",
+    "WAITING_PERIOD",
+    "PRE_AUTH_MISSING",
     "NON_MEDICAL_ITEM"
   ])),
   notes: z.string()
@@ -30,8 +28,8 @@ export const PolicyEvaluatorSchema = z.object({
 export type PolicyEvaluationResult = z.infer<typeof PolicyEvaluatorSchema>;
 
 export async function evaluateMedicalPolicy(
-  agent2Output: any, 
-  claimCategory: string, 
+  agent2Output: any,
+  claimCategory: string,
   restrictedConditions: string[]
 ): Promise<PolicyEvaluationResult> {
   console.log(`[AGENT 3: POLICY EVALUATOR] Running LLM Policy Evaluation...`);
@@ -70,20 +68,25 @@ ${JSON.stringify(categoryTerms, null, 2)}
 ${JSON.stringify(agent2Output.lineItems, null, 2)}
 
 ### INSTRUCTIONS:
-1. Evaluate the diagnoses against the Currently Restricted waiting periods and General Exclusions. If the primary diagnosis matches or is related to a restricted/excluded condition, the ENTIRE claim must be rejected (decision: MEDICAL_REJECTED). Move all line items to rejected_line_items.
-2. If the main diagnosis is covered, evaluate each individual billed line item. Reject items that are explicitly excluded (e.g., "Teeth Whitening", "Vitamins") or require missing pre-auth (e.g., MRI over 10k without auth).
-3. If some line items are covered and some are rejected, output PARTIAL_APPROVAL.
-4. If everything is covered, output MEDICAL_APPROVED.
-5. In your notes, explicitly justify any rejected items or conditions.
+1. Evaluate the diagnoses against the Currently Restricted waiting periods and General Exclusions.
+2. For EACH billed line item, determine if it is medically necessary to treat a COVERED diagnosis.
+3. If a line item is used to treat a condition that is Excluded or Restricted (e.g., Insulin for restricted Diabetes), move ONLY that specific line item to \`rejected_line_items\` with the reason. Do NOT reject the entire claim if other items are treating covered conditions.
+4. Also reject any line item that is explicitly excluded itself (e.g., "Teeth Whitening", "Vitamins") or requires missing pre-auth (e.g., MRI over 10k without auth).
+5. STRICT RULE: ONLY output items in \`approved_line_items\` or \`rejected_line_items\` that EXACTLY match the items in the "Billed Line Items" list. Do NOT evaluate or reject prescribed medicines or treatments if they were not explicitly billed!
+6. If ALL billed line items are rejected, output \`decision: MEDICAL_REJECTED\`.
+7. If SOME billed line items are approved and SOME are rejected, output \`decision: PARTIAL_APPROVAL\`.
+8. If ALL billed line items are approved, output \`decision: MEDICAL_APPROVED\`.
+9. In your notes, explicitly justify any rejected items or conditions.
 `;
 
   try {
+    console.log(`[AGENT 3: POLICY EVALUATOR] Billed Line Items being sent to LLM:\n`, JSON.stringify(agent2Output.lineItems, null, 2));
     const { object } = await generateObject({
-      model: openai('gpt-4o'),
+      model: openai('gpt-5-mini'),
       schema: PolicyEvaluatorSchema,
       prompt: prompt,
     });
-    
+
     console.log(`[AGENT 3: POLICY EVALUATOR] Decision: ${object.decision}. Approved Items: ${object.approved_line_items.length}`);
     return object;
   } catch (error) {

@@ -1,18 +1,6 @@
 'use server';
 
 export async function preEvaluationCheck(agent2Output: {
-  patientNamesFound: string[];
-  diagnoses: string[];
-  treatments: string[];
-  investigations: string[];
-  hospitals: string[];
-  doctors: string[];
-  lineItems: { description: string; amount: number }[];
-  totalBilledAmount: number;
-  confidenceScore: number;
-  hasExtractionErrors: boolean;
-  hasTamperingFlags: boolean;
-  tamperingFlags: string[];
   rawExtractions: any[];
 }) {
   console.log(`[AGENT 3: VALIDATOR] Running Pre-Evaluation Checks...`);

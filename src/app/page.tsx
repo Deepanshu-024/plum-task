@@ -1,26 +1,12 @@
 'use client'
 
-import { useState } from 'react'
-import { AlertTriangle, ArrowUpRight, Bell, Check, ChevronDown, CircleHelp, ClipboardCheck, Clock3, FileCheck2, FileText, Filter, Headphones, LayoutDashboard, MoreHorizontal, Paperclip, Play, Plus, Search, Settings2, ShieldCheck, Sparkles, Upload, UserRound, UsersRound, X } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { AlertTriangle, ArrowUpRight, Bell, Check, ChevronDown, CircleHelp, ClipboardCheck, Clock3, FileCheck2, FileText, Filter, Headphones, LayoutDashboard, MoreHorizontal, Paperclip, Play, Plus, Search, Settings2, ShieldCheck, Sparkles, Upload, UserRound, UsersRound, X, Loader2 } from 'lucide-react'
 import policy from '../../policy_terms.json'
 import { NewClaim } from '@/components/NewClaim'
-const claims = [
-  { id: 'CLM-24091', member: 'Rajesh Kumar', initials: 'RK', type: 'Consultation', amount: '₹1,800', decision: 'APPROVED', score: '96%', time: '12 min ago' },
-  { id: 'CLM-24090', member: 'Priya Singh', initials: 'PS', type: 'Diagnostic', amount: '₹14,200', decision: 'PARTIAL', score: '88%', time: '28 min ago' },
-  { id: 'CLM-24089', member: 'Amit Verma', initials: 'AV', type: 'Pharmacy', amount: '₹3,460', decision: 'MANUAL_REVIEW', score: '71%', time: '1 hr ago' },
-  { id: 'CLM-24088', member: 'Sneha Reddy', initials: 'SR', type: 'Dental', amount: '₹8,500', decision: 'REJECTED', score: '98%', time: '2 hrs ago' },
-  { id: 'CLM-24087', member: 'Vikram Joshi', initials: 'VJ', type: 'Consultation', amount: '₹2,100', decision: 'APPROVED', score: '94%', time: '3 hrs ago' },
-]
-
-const trace = [
-  { title: 'Claim received', desc: 'Payload validated · CLM-24091', time: '10:41:02', state: 'done', icon: ClipboardCheck },
-  { title: 'Documents verified', desc: '1 of 1 required document found · Hospital bill', time: '10:41:04', state: 'done', icon: FileCheck2 },
-  { title: 'Information extracted', desc: 'Patient, provider, line items and total identified', time: '10:41:12', state: 'done', icon: Sparkles },
-  { title: 'Policy rules evaluated', desc: 'Consultation coverage · ₹2,000 sub-limit · 10% co-pay', time: '10:41:13', state: 'done', icon: ShieldCheck },
-  { title: 'Decision generated', desc: 'Approved ₹1,620 after applicable co-pay', time: '10:41:13', state: 'done', icon: Check },
-]
 
 function StatusBadge({ status }: { status: string }) {
+  if (!status) return <span className="badge">PROCESSING</span>;
   const styles: Record<string, string> = { APPROVED: 'badge approved', PARTIAL: 'badge partial', REJECTED: 'badge rejected', MANUAL_REVIEW: 'badge review' }
   return <span className={styles[status] || 'badge'}>{status.replace('_', ' ')}</span>
 }
@@ -42,21 +28,179 @@ function Header({ active }: { active: string }) { return <header className="topb
 
 function StatCard({ label, value, sub, icon: Icon, tone }: { label: string; value: string; sub: string; icon: any; tone: string }) { return <div className="stat-card"><div className={`stat-icon ${tone}`}><Icon /></div><div><p>{label}</p><strong>{value}</strong><small>{sub}</small></div><ArrowUpRight className="stat-arrow" /></div> }
 
-function Overview({ onNewClaim }: { onNewClaim: () => void }) { const [selected, setSelected] = useState(claims[0]); return <div className="page-content">
+function Overview({ onNewClaim }: { onNewClaim: () => void }) { 
+  const [claims, setClaims] = useState<any[]>([]);
+  const [selected, setSelected] = useState<any>(null);
+  
+  useEffect(() => {
+    fetch('/api/claims').then(r => r.json()).then(data => {
+      setClaims(data);
+      if (data.length > 0) setSelected(data[0]);
+    });
+  }, []);
+
+  return <div className="page-content">
   <div className="overview-actions"><div><p className="eyebrow">Tuesday, 18 June 2024</p><p className="muted">Here&apos;s what&apos;s happening across your claims workspace.</p></div><button className="primary-button" onClick={onNewClaim}><Plus /> New claim</button></div>
   <div className="stats-grid"><StatCard label="Claims processed" value="1,284" sub="+12.8% vs last month" icon={FileCheck2} tone="blue" /><StatCard label="Auto-approved" value="78.4%" sub="+4.2% vs last month" icon={Check} tone="green" /><StatCard label="Needs review" value="24" sub="8 high priority" icon={Clock3} tone="amber" /><StatCard label="Avg. processing time" value="3m 42s" sub="-18% vs last month" icon={Sparkles} tone="violet" /></div>
-  <div className="main-grid"><section className="panel claims-panel"><div className="panel-heading"><div><h2>Recent claims</h2><p>Latest activity from your workspace</p></div><button className="text-button">View all <ArrowUpRight /></button></div><div className="table-tools"><div className="search-field"><Search /><input placeholder="Search claims" /></div><button className="filter-button"><Filter /> Filter</button></div><div className="claims-table"><div className="table-row table-head"><span>Claim ID</span><span>Member</span><span>Type</span><span>Amount</span><span>Decision</span><span>Confidence</span><span /></div>{claims.map(claim => <button className={`table-row claim-row ${selected.id === claim.id ? 'selected' : ''}`} key={claim.id} onClick={() => setSelected(claim)}><span className="claim-id">{claim.id}</span><span className="member-cell"><span className="avatar">{claim.initials}</span><span>{claim.member}</span></span><span className="muted-cell">{claim.type}</span><span className="amount">{claim.amount}</span><span><StatusBadge status={claim.decision} /></span><span className="confidence"><span className="confidence-bar"><i style={{ width: claim.score }} /></span>{claim.score}</span><MoreHorizontal className="row-more" /></button>)}</div></section><DecisionPanel claim={selected} /></div>
-  <div className="bottom-grid"><section className="panel"><div className="panel-heading"><div><h2>Processing activity</h2><p>System health across the last 24 hours</p></div><span className="healthy"><i /> All systems operational</span></div><div className="activity-chart"><div className="y-labels"><span>100</span><span>75</span><span>50</span><span>25</span><span>0</span></div><div className="chart-area"><div className="grid-lines" /> <svg viewBox="0 0 600 150" preserveAspectRatio="none"><path d="M0 112 C45 110 58 90 90 98 S135 123 166 82 S214 90 246 68 S290 92 318 60 S365 65 400 44 S455 73 485 35 S540 42 600 18" fill="none" stroke="#1d8a78" strokeWidth="3" /><path d="M0 112 C45 110 58 90 90 98 S135 123 166 82 S214 90 246 68 S290 92 318 60 S365 65 400 44 S455 73 485 35 S540 42 600 18 V150 H0Z" fill="url(#fade)" opacity=".18" /><defs><linearGradient id="fade" x1="0" x2="0" y1="0" y2="1"><stop stopColor="#1d8a78" /><stop offset="1" stopColor="#1d8a78" stopOpacity="0" /></linearGradient></defs></svg><div className="x-labels"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>Now</span></div></div></div></section><section className="panel quick-panel"><div className="panel-heading"><div><h2>Quick actions</h2><p>Common operator workflows</p></div></div><button className="quick-action" onClick={onNewClaim}><span className="quick-icon teal"><Upload /></span><span><strong>Submit a claim</strong><small>Start a new claim review</small></span><ArrowUpRight /></button><button className="quick-action"><span className="quick-icon purple"><ClipboardCheck /></span><span><strong>Run evaluation suite</strong><small>Test against 12 scenarios</small></span><ArrowUpRight /></button><button className="quick-action"><span className="quick-icon orange"><FileText /></span><span><strong>View policy rules</strong><small>Standard Plan · v2024.1</small></span><ArrowUpRight /></button></section></div>
+  <div className="main-grid"><section className="panel claims-panel"><div className="panel-heading"><div><h2>Recent claims</h2><p>Latest activity from your workspace</p></div><button className="text-button">View all <ArrowUpRight /></button></div><div className="table-tools"><div className="search-field"><Search /><input placeholder="Search claims" /></div><button className="filter-button"><Filter /> Filter</button></div><div className="claims-table"><div className="table-row table-head"><span>Claim ID</span><span>Member</span><span>Type</span><span>Amount</span><span>Decision</span><span /></div>
+  {claims.map(claim => <button className={`table-row claim-row ${selected?.id === claim.id ? 'selected' : ''}`} key={claim.id} onClick={() => setSelected(claim)}><span className="claim-id">{claim.id.slice(0,8).toUpperCase()}</span><span className="member-cell"><span>{claim.employeeId}</span></span><span className="muted-cell">{claim.claimCategory}</span><span className="amount">₹{claim.claimedAmount}</span><span><StatusBadge status={claim.decision || claim.status} /></span><MoreHorizontal className="row-more" /></button>)}
+  </div></section>{selected && <DecisionPanel claim={selected} />}</div>
+  <div className="bottom-grid"><section className="panel quick-panel"><div className="panel-heading"><div><h2>Quick actions</h2><p>Common operator workflows</p></div></div><button className="quick-action" onClick={onNewClaim}><span className="quick-icon teal"><Upload /></span><span><strong>Submit a claim</strong><small>Start a new claim review</small></span><ArrowUpRight /></button></section></div>
 </div> }
 
-function DecisionPanel({ claim }: { claim: typeof claims[0] }) { return <section className="panel decision-panel"><div className="panel-heading"><div><h2>Decision preview</h2><p>{claim.id} · selected claim</p></div><button className="icon-button"><MoreHorizontal /></button></div><div className="decision-hero"><div><span className="decision-label">FINAL DECISION</span><h3><StatusBadge status={claim.decision} /></h3></div><div className="approved-amount"><span>Approved amount</span><strong>{claim.decision === 'REJECTED' ? '₹0' : claim.amount}</strong></div></div><div className="confidence-card"><div><span>Confidence score</span><strong>{claim.score}</strong></div><div className="large-bar"><i style={{ width: claim.score }} /></div><p>High confidence · all required evidence found</p></div><div className="reason"><strong>Why this decision?</strong><p>Consultation is covered under the member&apos;s policy. The claimed amount is within the ₹2,000 sub-limit and the applicable 10% co-pay has been applied.</p></div><button className="outline-button full" onClick={() => window.dispatchEvent(new CustomEvent('show-trace'))}>View full processing trace <ArrowUpRight /></button></section> }
+function DecisionPanel({ claim }: { claim: any }) { return <section className="panel decision-panel"><div className="panel-heading"><div><h2>Decision preview</h2><p>{claim.id.slice(0,8).toUpperCase()} · selected claim</p></div><button className="icon-button"><MoreHorizontal /></button></div><div className="decision-hero"><div><span className="decision-label">FINAL DECISION</span><h3><StatusBadge status={claim.decision || claim.status} /></h3></div><div className="approved-amount"><span>Claimed amount</span><strong>₹{claim.claimedAmount}</strong></div></div><div className="reason"><strong>Why this decision?</strong><p>{claim.decisionSummary || "Claim is currently processing. View trace for live updates."}</p></div><button className="outline-button full" onClick={() => window.dispatchEvent(new CustomEvent('show-trace', { detail: { claimId: claim.id } }))}>View live processing trace <ArrowUpRight /></button></section> }
 
-function TraceModal({ close }: { close: () => void }) { return <div className="modal-backdrop"><div className="trace-modal"><div className="modal-header"><div><p className="eyebrow">AUDIT TRAIL · CLM-24091</p><h2>Processing trace</h2><p>Every step captured for explainable review.</p></div><button className="icon-button" onClick={close}><X /></button></div><div className="trace-summary"><div><span>Decision</span><StatusBadge status="APPROVED" /></div><div><span>Approved</span><strong>₹1,620</strong></div><div><span>Confidence</span><strong className="green-text">96%</strong></div></div><div className="trace-list">{trace.map((item, index) => { const Icon = item.icon; return <div className="trace-item" key={item.title}><div className="trace-line"><div className="trace-icon"><Icon /></div>{index < trace.length - 1 && <i />}</div><div className="trace-copy"><div><strong>{item.title}</strong><time>{item.time}</time></div><p>{item.desc}</p><span className="trace-status"><Check /> Completed</span></div></div>})}</div><div className="trace-footer"><span><ShieldCheck /> Immutable audit record</span><button className="outline-button">Export trace <ArrowUpRight /></button></div></div></div> }
+function KeyValueDisplay({ data }: { data: any }) {
+  if (typeof data !== 'object' || data === null) {
+    return <span style={{ color: '#0f172a' }}>{String(data)}</span>;
+  }
+  
+  if (Array.isArray(data)) {
+    return (
+      <div style={{ paddingLeft: '12px', margin: '4px 0', borderLeft: '1px solid #cbd5e1' }}>
+        {data.map((val, i) => (
+          <div key={i} style={{ marginBottom: '4px' }}>
+            <span style={{color: '#94a3b8', fontSize: '9px', marginRight: '4px'}}>▶</span>
+            <KeyValueDisplay data={val} />
+          </div>
+        ))}
+      </div>
+    );
+  }
 
-function Evaluation() { return <div className="page-content"><div className="overview-actions"><div><p className="eyebrow">QUALITY CONTROL</p><h2 className="page-title">Evaluation suite</h2><p className="muted">Measure decision quality against your golden test cases.</p></div><button className="primary-button"><Play /> Run all tests</button></div><div className="eval-summary"><div><span>Overall accuracy</span><strong>91.7%</strong><small>11 of 12 matched</small></div><div><span>Document checks</span><strong>100%</strong><small>All early stops caught</small></div><div><span>Avg. confidence</span><strong>89.4%</strong><small>Across all decisions</small></div><div><span>Last run</span><strong>2 min ago</strong><small>v0.8.2 · Standard Plan</small></div></div><section className="panel eval-table"><div className="panel-heading"><div><h2>Test cases</h2><p>Decision output compared with expected outcome</p></div><button className="filter-button"><Filter /> Filter</button></div>{['TC-001 · Valid consultation approval','TC-002 · Missing prescription caught early','TC-003 · Diagnostic over sub-limit','TC-004 · Dental exclusion','TC-005 · Pharmacy generic mandate','TC-006 · Waiting period violation'].map((t, i) => <div className="eval-row" key={t}><span className="eval-check">{i === 5 ? <AlertTriangle /> : <Check />}</span><span><strong>{t}</strong><small>Completed in {i === 1 ? '0.8s' : '3.4s'} · Full trace available</small></span><StatusBadge status={i === 3 ? 'REJECTED' : i === 2 ? 'PARTIAL' : 'APPROVED'} /><span className="match">{i === 5 ? 'Review' : 'Matched'} <ArrowUpRight /></span></div>)}</section></div> }
+  return (
+    <div style={{ paddingLeft: '8px', margin: '4px 0' }}>
+      {Object.entries(data).map(([key, val]) => (
+        <div key={key} style={{ marginBottom: '6px' }}>
+          <strong style={{ color: '#475569', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{key}</strong>
+          <div style={{ marginTop: '2px' }}>
+            <KeyValueDisplay data={val} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
-export default function Page() { const [active, setActive] = useState('Overview'); const [newClaim, setNewClaim] = useState(false); const [traceOpen, setTraceOpen] = useState(false); return <div className="app-shell"><Sidebar active={active} setActive={setActive} /><main className="main-area"><Header active={active} />{active === 'Overview' && <Overview onNewClaim={() => setNewClaim(true)} />}{active === 'Evaluation' && <Evaluation />}{active === 'Claims inbox' && <Overview onNewClaim={() => setNewClaim(true)} />}{active === 'Policy rules' && <PolicyView />}</main>{newClaim && <NewClaim close={() => setNewClaim(false)} />}{traceOpen && <TraceModal close={() => setTraceOpen(false)} />}</div> }
+function DocPayloadBlock({ doc }: { doc: any }) {
+  const [view, setView] = useState<'input' | 'output'>('output');
+
+  return (
+    <div style={{ display: 'flex', gap: '16px', flexDirection: 'row', borderBottom: '1px solid #e2e8f0', paddingBottom: '16px', marginBottom: '8px' }}>
+      <div style={{ flex: '0 0 160px' }}>
+        <a href={doc.url} target="_blank" rel="noreferrer">
+          <img src={doc.url} alt="Document Preview" style={{width: '100%', borderRadius: 4, border: '1px solid #cbd5e1'}} />
+        </a>
+      </div>
+      <div style={{ flex: 1, minWidth: 0, overflowX: 'auto', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
+          <button type="button" onClick={() => setView('input')} style={{ padding: '4px 10px', fontWeight: 600, fontSize: 10, borderRadius: 4, background: view === 'input' ? '#334155' : '#e2e8f0', color: view === 'input' ? '#fff' : '#475569', border: 'none', cursor: 'pointer' }}>INPUT PAYLOAD</button>
+          <button type="button" onClick={() => setView('output')} style={{ padding: '4px 10px', fontWeight: 600, fontSize: 10, borderRadius: 4, background: view === 'output' ? '#1f917b' : '#e2e8f0', color: view === 'output' ? '#fff' : '#475569', border: 'none', cursor: 'pointer' }}>OUTPUT RESULT</button>
+        </div>
+        <div style={{ fontSize: 11, background: '#fff', padding: '12px', borderRadius: 6, border: '1px solid #e2e8f0', flex: 1, overflowY: 'auto' }}>
+          <KeyValueDisplay data={view === 'input' ? doc.input : doc.output} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TracePayloadViewer({ item }: { item: any }) {
+  let docs: any[] = [];
+  let globalOutput: any = null;
+
+  if (item.agentName === 'DOCUMENT_VERIFIER' && item.input?.submittedDocuments) {
+    docs = item.input.submittedDocuments.map((inDoc: any, i: number) => ({
+      url: inDoc.url,
+      input: inDoc,
+      output: item.output?.analyzedDocs?.[i] || null
+    }));
+    globalOutput = { isAccepted: item.output?.isAccepted, reasoning: item.output?.reasoning };
+  } else if (item.agentName === 'DOCUMENT_PARSER' && item.input?.url) {
+    docs = [{
+      url: item.input.url,
+      input: item.input,
+      output: item.output
+    }];
+  } else {
+    return (
+      <div style={{marginTop: 8, overflowX: 'auto'}}>
+        <strong style={{color: '#64748b', fontSize: 10}}>INPUT:</strong>
+        <div style={{ background: '#fff', padding: '8px', borderRadius: '4px', border: '1px solid #e2e8f0', marginBottom: '8px' }}>
+          <KeyValueDisplay data={item.input} />
+        </div>
+        <strong style={{color: '#64748b', fontSize: 10}}>OUTPUT:</strong>
+        <div style={{ background: '#fff', padding: '8px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
+          <KeyValueDisplay data={item.output} />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', marginTop: 12 }}>
+      {docs.map((doc, i) => <DocPayloadBlock key={i} doc={doc} />)}
+      {globalOutput && (
+        <div style={{ padding: '8px 12px', background: globalOutput.isAccepted ? '#ecfdf5' : '#fef2f2', borderRadius: 4, color: globalOutput.isAccepted ? '#065f46' : '#991b1b', border: `1px solid ${globalOutput.isAccepted ? '#a7f3d0' : '#fecaca'}` }}>
+          <strong>Final Verdict:</strong> {globalOutput.reasoning}<br/>
+          <strong>Accepted:</strong> {globalOutput.isAccepted ? 'True' : 'False'}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TraceModal({ claimId, close }: { claimId: string; close: () => void }) { 
+  const [traces, setTraces] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch(`/api/claims/${claimId}/traces`).then(r => r.json()).then(data => {
+      setTraces(data);
+      setLoading(false);
+    });
+  }, [claimId]);
+
+  return <div className="modal-backdrop">
+    <div className="trace-modal" style={{maxHeight: '85vh', display: 'flex', flexDirection: 'column'}}>
+      <div className="modal-header">
+        <div><p className="eyebrow">LIVE AUDIT TRAIL</p><h2>Processing trace</h2><p>Every internal LLM and code step captured for explainable review.</p></div>
+        <button className="icon-button" onClick={close}><X /></button>
+      </div>
+      <div className="trace-list" style={{overflowY: 'auto', flex: 1, paddingRight: '8px'}}>
+        {loading ? <div style={{padding: 40, textAlign: 'center'}}><Loader2 className="animate-spin" style={{margin: 'auto'}} /></div> : traces.map((item, index) => { 
+          return <div className="trace-item" key={item.id}><div className="trace-line"><div className="trace-icon"><Sparkles /></div>{index < traces.length - 1 && <i />}</div><div className="trace-copy"><div><strong>{item.agentName} (Step {item.stepOrder})</strong><time>{new Date(item.createdAt).toLocaleTimeString()}</time></div>
+          <p style={{fontSize: 12, opacity: 0.8}}>{item.status === 'PASS' ? 'Passed Checks' : item.status === 'FAIL' ? 'Failed Checks' : 'Running'} {item.confidenceScore ? ` · Confidence: ${(item.confidenceScore * 100).toFixed(1)}%` : ''}</p>
+          {item.checks?.length > 0 && <ul style={{fontSize: 11, background: '#f8fafc', padding: '8px 12px', borderRadius: 4, marginTop: 8}}>
+            {item.checks.map((c: any, i: number) => <li key={i} style={{marginBottom: 2}}>{c.passed ? '✅' : '❌'} {c.check}: {c.reason}</li>)}
+          </ul>}
+          {(item.input || item.output) && (
+            <details style={{marginTop: 8, fontSize: 11, background: '#f1f5f9', padding: '8px 12px', borderRadius: 4, cursor: 'pointer'}}>
+              <summary style={{fontWeight: 600, color: '#334155'}}>View I/O Payloads (Debug)</summary>
+              <TracePayloadViewer item={item} />
+            </details>
+          )}
+          <span className="trace-status" style={{color: item.status === 'PASS' ? '#1f917b' : '#c55c5c'}}>{item.status}</span></div></div>
+        })}
+        {!loading && traces.length === 0 && <p style={{padding: 20, textAlign: 'center', opacity: 0.5}}>No traces found yet. Processing...</p>}
+      </div>
+      <div className="trace-footer" style={{marginTop: 'auto'}}><span><ShieldCheck /> Immutable audit record</span></div>
+    </div>
+  </div> 
+}
+
+export default function Page() { 
+  const [active, setActive] = useState('Overview'); 
+  const [newClaim, setNewClaim] = useState(false); 
+  const [traceClaimId, setTraceClaimId] = useState<string | null>(null); 
+  
+  useEffect(() => {
+    const handleTrace = (e: any) => setTraceClaimId(e.detail?.claimId);
+    window.addEventListener('show-trace', handleTrace);
+    return () => window.removeEventListener('show-trace', handleTrace);
+  }, []);
+
+  return <div className="app-shell"><Sidebar active={active} setActive={setActive} /><main className="main-area"><Header active={active} />{active === 'Overview' && <Overview onNewClaim={() => setNewClaim(true)} />}{active === 'Claims inbox' && <Overview onNewClaim={() => setNewClaim(true)} />}{active === 'Policy rules' && <PolicyView />}</main>{newClaim && <NewClaim close={() => setNewClaim(false)} />}{traceClaimId && <TraceModal claimId={traceClaimId} close={() => setTraceClaimId(null)} />}</div> 
+}
 
 function PolicyView() { return <div className="page-content"><div className="overview-actions"><div><p className="eyebrow">POLICY CONFIGURATION</p><h2 className="page-title">{policy.policy_name}</h2><p className="muted">{policy.insurer} · {policy.policy_id}</p></div><button className="outline-button"><Settings2 /> Edit policy</button></div><div className="policy-grid"><div className="panel policy-overview"><h2>Coverage overview</h2><div className="policy-number"><span>Sum insured per employee</span><strong>₹5,00,000</strong></div><div className="policy-number"><span>Annual OPD limit</span><strong>₹50,000</strong></div><div className="policy-number"><span>Family floater</span><strong>₹1,50,000</strong></div></div><div className="panel policy-overview"><h2>Plan status</h2><div className="plan-status"><span className="live-dot" /> Active</div><p>Policy period</p><strong>01 Apr 2024 — 31 Mar 2025</strong><p className="muted">{policy.policy_holder.company_name} · {policy.policy_holder.employee_count} employees</p></div></div><section className="panel"><div className="panel-heading"><div><h2>OPD categories</h2><p>Rules applied during automated evaluation</p></div></div><div className="category-grid">{Object.entries(policy.opd_categories).map(([key, value]: [string, any]) => <div className="category-card" key={key}><div className="category-top"><strong>{key.replace('_', ' ')}</strong><span className="badge approved">Covered</span></div><div><span>Sub-limit</span><strong>₹{value.sub_limit.toLocaleString('en-IN')}</strong></div><div><span>Co-pay</span><strong>{value.copay_percent}%</strong></div><div><span>Prescription</span><strong>{value.requires_prescription ? 'Required' : 'Not required'}</strong></div></div>)}</div></section></div> }
-
-if (typeof window !== 'undefined') window.addEventListener('show-trace', () => {})

@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 
 export async function runDeterministicPolicyChecks(
-  agent2Output: any,
+  //agent2Output: any,
   employeeId: string,
   treatmentDate: string,
   claimedAmount: number,

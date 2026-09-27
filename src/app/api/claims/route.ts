@@ -233,7 +233,6 @@ export async function POST(request: Request) {
       console.log(`\n[ROUTE] >> Triggering Agent 3 (Module 2: Pre-Policy Checks) for claim ${claim.id}`);
       
       const prePolicyResult = await runDeterministicPolicyChecks(
-        extractionOutput,
         claim.employeeId,
         claim.treatmentDate.toISOString(),
         Number(claim.claimedAmount),
@@ -296,7 +295,13 @@ export async function POST(request: Request) {
           status: policyEvalResult.decision !== 'MEDICAL_REJECTED' ? 'PASS' : 'FAIL',
           input: { 
             claimCategory: claim.claimCategory,
-            restrictedConditions: prePolicyResult.restrictedConditions
+            restrictedConditions: prePolicyResult.restrictedConditions,
+            medicalData: {
+              diagnoses: extractionOutput.diagnoses,
+              treatments: extractionOutput.treatments,
+              investigations: extractionOutput.investigations,
+              lineItems: extractionOutput.lineItems
+            }
           },
           output: policyEvalResult as any,
         }
@@ -322,11 +327,55 @@ export async function POST(request: Request) {
         });
       }
 
-      console.log(`[ROUTE] << Agent 3 Module 3 Completed for claim ${claim.id}. Decision: ${policyEvalResult.decision}`);
+      // --- Phase H: Agent 3 Module 4 (Financial Calculator) ---
+      const { calculateFinancialPayout } = await import('@/actions/financialCalculator');
+      console.log(`\n[ROUTE] >> Triggering Agent 3 (Module 4: Financial Calculator) for claim ${claim.id}`);
 
-      // TODO (trigger.dev): Trigger Agent 3 (Financial Calculator) background job here
+      const financialResult = await calculateFinancialPayout(
+        policyEvalResult.approved_line_items,
+        claim.claimCategory
+      );
+
+      await prisma.traceEntry.create({
+        data: {
+          claimId: claim.id,
+          agentName: 'FINANCIAL_CALCULATOR',
+          stepOrder: 6,
+          status: 'PASS',
+          input: { 
+            approvedLineItems: policyEvalResult.approved_line_items,
+            claimCategory: claim.claimCategory
+          },
+          output: financialResult as any,
+          checks: [
+            { check: "Co-Pay Calculation", passed: true, reason: `Applied ${financialResult.appliedLimits.copayPercent}% copay.` },
+            { check: "Sub-Limit Enforcement", passed: financialResult.totalApprovedAmount - financialResult.copayAmount <= financialResult.appliedLimits.subLimit, reason: `Sub-limit is ₹${financialResult.appliedLimits.subLimit}` },
+            { check: "Global Limit Enforcement", passed: financialResult.payableAmount <= financialResult.appliedLimits.globalClaimLimit, reason: `Global limit is ₹${financialResult.appliedLimits.globalClaimLimit}` }
+          ]
+        }
+      });
+
+      console.log(`[ROUTE] << Agent 3 Module 4 Completed. Final Payable: ₹${financialResult.payableAmount}`);
+
+      const finalDecisionMap = {
+        'MEDICAL_APPROVED': 'APPROVED',
+        'PARTIAL_APPROVAL': 'PARTIAL',
+        'MEDICAL_REJECTED': 'REJECTED'
+      } as const;
+
+      await prisma.claim.update({
+        where: { id: claim.id },
+        data: { 
+          status: 'COMPLETED',
+          decision: finalDecisionMap[policyEvalResult.decision as keyof typeof finalDecisionMap] as any,
+          decisionSummary: `Claim Processed. ${financialResult.breakdown}. Medical notes: ${policyEvalResult.notes}`,
+          rejectionReasons: policyEvalResult.rejection_reasons,
+          approvedAmount: financialResult.payableAmount,
+          financialBreakdown: financialResult as any
+        }
+      });
     } catch (extError: any) {
-      console.error('Agent 2 AI Error:', extError);
+      console.error('Agent AI Error:', extError);
       await prisma.traceEntry.create({
         data: {
           claimId: claim.id,
@@ -343,5 +392,35 @@ export async function POST(request: Request) {
   } catch (error: any) {
     console.error('Error handling claim:', error);
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
+  }
+}
+
+export async function GET(request: Request) {
+  try {
+    const session = await auth();
+    const clerkId = session?.userId;
+    
+    if (!clerkId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { clerkId }
+    });
+
+    if (!user) {
+      return NextResponse.json({ error: 'User not found in database' }, { status: 404 });
+    }
+
+    const claims = await prisma.claim.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: 'desc' },
+      take: 10
+    });
+
+    return NextResponse.json(claims);
+  } catch (error: any) {
+    console.error("Failed to fetch claims:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
