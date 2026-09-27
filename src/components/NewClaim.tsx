@@ -3,6 +3,7 @@
 import { useState, useRef, FormEvent } from 'react'
 import { Upload, Paperclip, FileText, Check, ShieldCheck, X, ArrowUpRight, Loader2 } from 'lucide-react'
 import policy from '../../policy_terms.json'
+import testCasesData from '../../test_cases.json'
 
 export function NewClaim({ close }: { close: () => void }) {
   const [category, setCategory] = useState<string>('CONSULTATION');
@@ -13,6 +14,13 @@ export function NewClaim({ close }: { close: () => void }) {
   const [aiError, setAiError] = useState<string | null>(null);
   const [failedDocs, setFailedDocs] = useState<any[]>([]);
 
+  // Controlled form states for auto-filling
+  const [employeeId, setEmployeeId] = useState('EMP001');
+  const [policyId, setPolicyId] = useState('PLUM_GHI_2024');
+  const [treatmentDate, setTreatmentDate] = useState('2024-10-10');
+  const [claimedAmount, setClaimedAmount] = useState('1500');
+  const [selectedTestCase, setSelectedTestCase] = useState('');
+
   // Create a ref map for each slot
   const fileInputRefs = useRef<Record<string, HTMLInputElement>>({});
 
@@ -21,6 +29,22 @@ export function NewClaim({ close }: { close: () => void }) {
       setFiles((prev) => ({ ...prev, [docType]: e.target.files![0] }));
       setAiError(null); // Clear error when user changes a file
       setFailedDocs((prev) => prev.filter(d => d.declaredType !== docType));
+    }
+  };
+
+  const handleTestCaseChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const caseId = e.target.value;
+    setSelectedTestCase(caseId);
+    
+    if (caseId) {
+      const testCase = testCasesData.test_cases.find(tc => tc.case_id === caseId);
+      if (testCase) {
+        setEmployeeId(testCase.input.member_id);
+        setPolicyId(testCase.input.policy_id);
+        setCategory(testCase.input.claim_category);
+        setTreatmentDate(testCase.input.treatment_date);
+        setClaimedAmount(testCase.input.claimed_amount.toString());
+      }
     }
   };
 
@@ -129,9 +153,21 @@ export function NewClaim({ close }: { close: () => void }) {
                 {failedDocs.length > 0 && <div style={{marginTop: '4px', opacity: 0.8}}>Please review the specific document feedback below and re-upload.</div>}
               </div>
             )}
+            <div className="form-grid" style={{ marginBottom: '20px', borderBottom: '1px solid #e2e8f0', paddingBottom: '16px' }}>
+              <label style={{ gridColumn: '1 / -1' }}>Load Test Case Data
+                <select value={selectedTestCase} onChange={handleTestCaseChange}>
+                  <option value="">-- Custom Input --</option>
+                  {testCasesData.test_cases.map((tc: any) => (
+                    <option key={tc.case_id} value={tc.case_id}>
+                      {tc.case_id}: {tc.case_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
             <div className="form-grid">
-              <label>Member ID<input required name="employeeId" defaultValue="EMP001" placeholder="e.g. EMP001" /></label>
-              <label>Policy ID<input required name="policyId" defaultValue="PLUM_GHI_2024" /></label>
+              <label>Member ID<input required name="employeeId" value={employeeId} onChange={e => setEmployeeId(e.target.value)} placeholder="e.g. EMP001" /></label>
+              <label>Policy ID<input required name="policyId" value={policyId} onChange={e => setPolicyId(e.target.value)} /></label>
 
               <label>Treatment type
                 <select required name="claimCategory" value={category} onChange={(e) => setCategory(e.target.value)}>
@@ -145,8 +181,8 @@ export function NewClaim({ close }: { close: () => void }) {
                 </select>
               </label>
 
-              <label>Treatment date<input required type="date" name="treatmentDate" defaultValue="2024-11-01" /></label>
-              <label>Claimed amount (₹)<input required type="number" step="0.01" name="claimedAmount" defaultValue="1500" placeholder="0.00" /></label>
+              <label>Treatment date<input required type="date" name="treatmentDate" value={treatmentDate} onChange={e => setTreatmentDate(e.target.value)} /></label>
+              <label>Claimed amount (₹)<input required type="number" step="0.01" name="claimedAmount" value={claimedAmount} onChange={e => setClaimedAmount(e.target.value)} placeholder="0.00" /></label>
               {/* <label>Hospital Name<input name="hospitalName" placeholder="Optional" /></label> */}
             </div>
 
