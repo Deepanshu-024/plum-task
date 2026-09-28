@@ -8,7 +8,7 @@ export async function POST(request: Request) {
     const session = await auth();
     const clerkId = session?.userId;
     
-    if (!clerkId) {
+    if (!clerkId) { 
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
