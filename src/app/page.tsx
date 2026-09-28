@@ -27,7 +27,7 @@ function Sidebar({ active, setActive }: { active: string; setActive: (v: string)
 
 function Header({ active }: { active: string }) { 
   const { user } = useUser();
-  const userName = user?.firstName || user?.fullName || "Ananya";
+  const userName = user?.firstName || user?.fullName || "Agent";
   const [greeting, setGreeting] = useState('Good morning');
   
   useEffect(() => {

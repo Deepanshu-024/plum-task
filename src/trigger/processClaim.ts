@@ -28,9 +28,18 @@ export const deterministicPolicyChecksTask = task({
   id: "deterministic-policy-checks",
   maxDuration: 120,
   run: async (payload: { claimId: string; employeeId: string; treatmentDate: string; claimedAmount: number }) => {
+    const currentClaim = await prisma.claim.findUnique({
+      where: { id: payload.claimId }
+    });
+    
+    if (!currentClaim) {
+      throw new Error("Claim not found");
+    }
+
     const claimsHistory = await prisma.claim.findMany({
       where: {
         employeeId: payload.employeeId,
+        userId: currentClaim.userId,
         id: { not: payload.claimId }
       }
     });
