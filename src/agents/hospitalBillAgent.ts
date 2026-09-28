@@ -12,30 +12,18 @@ export async function extractHospitalBill(url: string, mimeType: string) {
       model: openai('gpt-4o'),
       system: BILL_PROMPT,
       messages: [
-        { role: 'user', content: [
+        {
+          role: 'user', content: [
             { type: 'text', text: 'Extract the structured financial and patient data from this HOSPITAL/PHARMACY BILL.' },
             { type: 'file', data: new URL(url), mediaType: mimeType }
-        ]}
+          ]
+        }
       ],
       output: Output.object({ schema: HospitalBillSchema })
     });
     return output;
-  } catch (err) {
+  } catch (err: any) {
     console.error(`Failed to extract Hospital Bill: ${url}`, err);
-    return {
-      document_type: "HOSPITAL_BILL" as const,
-      confidence_score: 0.0,
-      illegible_fields: ["ALL"],
-      document_integrity: fallbackIntegrity,
-      patient_name: null,
-      bill_date: null,
-      hospital_name: null,
-      hospital_address: null,
-      gstin: null,
-      line_items: [],
-      subtotal: null,
-      tax_amount: null,
-      total_amount: null
-    };
+    throw new Error(`AI API Error during Hospital Bill extraction: ${err.message || String(err)}`);
   }
 }

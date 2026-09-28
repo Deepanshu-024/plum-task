@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useUser, UserButton } from '@clerk/nextjs'
+import { useUser, useClerk, UserButton } from '@clerk/nextjs'
 import { AlertTriangle, ArrowUpRight, Bell, Check, ChevronDown, CircleHelp, ClipboardCheck, Clock3, FileCheck2, FileText, Filter, Headphones, LayoutDashboard, MoreHorizontal, Paperclip, Play, Plus, Search, Settings2, ShieldCheck, Sparkles, Upload, UserRound, UsersRound, X, Loader2 } from 'lucide-react'
 import policy from '../../policy_terms.json'
 import { NewClaim } from '@/components/NewClaim'
@@ -49,9 +49,11 @@ function Overview({ onNewClaim }: { onNewClaim: () => void }) {
 
   useEffect(() => {
     fetch('/api/claims').then(r => r.json()).then(data => {
-      setClaims(data);
-      if (data.length > 0) setSelected(data[0]);
-    });
+      if (Array.isArray(data)) {
+        setClaims(data);
+        if (data.length > 0) setSelected(data[0]);
+      }
+    }).catch(() => {});
     setCurrentDate(new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }));
   }, []);
 
@@ -211,6 +213,16 @@ export default function Page() {
   const [active, setActive] = useState('Overview');
   const [newClaim, setNewClaim] = useState(false);
   const [traceClaimId, setTraceClaimId] = useState<string | null>(null);
+  const { isSignedIn } = useUser();
+  const { openSignIn } = useClerk();
+
+  const handleNewClaim = () => {
+    if (!isSignedIn) {
+      openSignIn();
+    } else {
+      setNewClaim(true);
+    }
+  };
 
   useEffect(() => {
     const handleTrace = (e: any) => setTraceClaimId(e.detail?.claimId);
@@ -218,7 +230,7 @@ export default function Page() {
     return () => window.removeEventListener('show-trace', handleTrace);
   }, []);
 
-  return <div className="app-shell"><Sidebar active={active} setActive={setActive} /><main className="main-area"><Header active={active} />{active === 'Overview' && <Overview onNewClaim={() => setNewClaim(true)} />}{active === 'Claims inbox' && <Overview onNewClaim={() => setNewClaim(true)} />}{active === 'Policy rules' && <PolicyView />}</main>{newClaim && <NewClaim close={() => setNewClaim(false)} />}{traceClaimId && <TraceModal claimId={traceClaimId} close={() => setTraceClaimId(null)} />}</div>
+  return <div className="app-shell"><Sidebar active={active} setActive={setActive} /><main className="main-area"><Header active={active} />{active === 'Overview' && <Overview onNewClaim={handleNewClaim} />}{active === 'Claims inbox' && <Overview onNewClaim={handleNewClaim} />}{active === 'Policy rules' && <PolicyView />}</main>{newClaim && <NewClaim close={() => setNewClaim(false)} />}{traceClaimId && <TraceModal claimId={traceClaimId} close={() => setTraceClaimId(null)} />}</div>
 }
 
 function PolicyView() { return <div className="page-content"><div className="overview-actions"><div><p className="eyebrow">POLICY CONFIGURATION</p><h2 className="page-title">{policy.policy_name}</h2><p className="muted">{policy.insurer} · {policy.policy_id}</p></div><button className="outline-button"><Settings2 /> Edit policy</button></div><div className="policy-grid"><div className="panel policy-overview"><h2>Coverage overview</h2><div className="policy-number"><span>Sum insured per employee</span><strong>₹5,00,000</strong></div><div className="policy-number"><span>Annual OPD limit</span><strong>₹50,000</strong></div><div className="policy-number"><span>Family floater</span><strong>₹1,50,000</strong></div></div><div className="panel policy-overview"><h2>Plan status</h2><div className="plan-status"><span className="live-dot" /> Active</div><p>Policy period</p><strong>01 Apr 2024 — 31 Mar 2025</strong><p className="muted">{policy.policy_holder.company_name} · {policy.policy_holder.employee_count} employees</p></div></div><section className="panel"><div className="panel-heading"><div><h2>OPD categories</h2><p>Rules applied during automated evaluation</p></div></div><div className="category-grid">{Object.entries(policy.opd_categories).map(([key, value]: [string, any]) => <div className="category-card" key={key}><div className="category-top"><strong>{key.replace('_', ' ')}</strong><span className="badge approved">Covered</span></div><div><span>Sub-limit</span><strong>₹{value.sub_limit.toLocaleString('en-IN')}</strong></div><div><span>Co-pay</span><strong>{value.copay_percent}%</strong></div><div><span>Prescription</span><strong>{value.requires_prescription ? 'Required' : 'Not required'}</strong></div></div>)}</div></section></div> }

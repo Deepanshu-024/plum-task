@@ -5,7 +5,8 @@ import path from 'path';
 
 export async function calculateFinancialPayout(
   approvedLineItems: { description: string; amount: number }[],
-  claimCategory: string
+  claimCategory: string,
+  hospitalName?: string
 ) {
   console.log(`[AGENT 3: FINANCIAL CALCULATOR] Running Financial Adjudication...`);
 
@@ -26,9 +27,27 @@ export async function calculateFinancialPayout(
   // 1. Sum up all medically approved line items
   const totalApprovedAmount = approvedLineItems.reduce((sum, item) => sum + item.amount, 0);
 
+  // 1.5 Apply Network Discount (if applicable)
+  let networkDiscountAmount = 0;
+  let isNetworkHospital = false;
+  const networkDiscountPercent = categoryTerms.network_discount_percent || 0;
+  
+  if (hospitalName && networkDiscountPercent > 0) {
+    const networkHospitals = policyTerms.network_hospitals || [];
+    isNetworkHospital = networkHospitals.some((h: string) => h.toLowerCase() === hospitalName.toLowerCase());
+    
+    if (isNetworkHospital) {
+      networkDiscountAmount = (totalApprovedAmount * networkDiscountPercent) / 100;
+    }
+  }
+
+  const discountedBaseAmount = totalApprovedAmount - networkDiscountAmount;
+
   // 2. Apply Co-Pay
-  const copayAmount = (totalApprovedAmount * copayPercent) / 100;
-  let payableAmount = totalApprovedAmount - copayAmount;
+  const copayAmount = (discountedBaseAmount * copayPercent) / 100;
+
+  const calculatedPayable = discountedBaseAmount - copayAmount;
+  let payableAmount = calculatedPayable;
 
   // 3. Apply Category Sub-Limit
   if (payableAmount > subLimit) {
@@ -43,21 +62,26 @@ export async function calculateFinancialPayout(
   // Build a nice breakdown for the trace/user
   const breakdown = [
     `Total Approved Medical Amount: ₹${totalApprovedAmount}`,
+    isNetworkHospital ? `Applied ${networkDiscountPercent}% Network Discount: -₹${networkDiscountAmount}` : null,
     copayPercent > 0 ? `Applied ${copayPercent}% Co-Pay: -₹${copayAmount}` : null,
-    totalApprovedAmount - copayAmount > subLimit ? `Capped at Category Sub-Limit: ₹${subLimit}` : null,
-    totalApprovedAmount - copayAmount > globalClaimLimit && subLimit > globalClaimLimit ? `Capped at Global Claim Limit: ₹${globalClaimLimit}` : null,
+    `Calculated Payable: ₹${calculatedPayable}`,
+    calculatedPayable > subLimit ? `Capped at Category Sub-Limit: ₹${subLimit}` : null,
+    calculatedPayable > globalClaimLimit && subLimit > globalClaimLimit ? `Capped at Global Claim Limit: ₹${globalClaimLimit}` : null,
     `Final Payable Amount: ₹${payableAmount}`
   ].filter(Boolean).join(' | ');
 
   return {
     totalApprovedAmount,
+    networkDiscountAmount,
     copayAmount,
+    calculatedPayable,
     payableAmount,
     breakdown,
     appliedLimits: {
       globalClaimLimit,
       subLimit,
-      copayPercent
+      copayPercent,
+      networkDiscountPercent: isNetworkHospital ? networkDiscountPercent : 0
     }
   };
 }

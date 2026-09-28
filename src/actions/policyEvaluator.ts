@@ -76,7 +76,9 @@ ${JSON.stringify(agent2Output.lineItems, null, 2)}
 6. If ALL billed line items are rejected, output \`decision: MEDICAL_REJECTED\`.
 7. If SOME billed line items are approved and SOME are rejected, output \`decision: PARTIAL_APPROVAL\`.
 8. If ALL billed line items are approved, output \`decision: MEDICAL_APPROVED\`.
-9. In your notes, explicitly justify any rejected items or conditions.
+9. MEDICAL SEMANTICS: Be anatomically and medically rigorous. Do not conflate distinct medical conditions just because they share a root word (e.g., spinal "herniation" is not abdominal "hernia").
+10. SUSPECTED CONDITIONS: Diagnostic investigations (like imaging or lab tests) done to rule out a "suspected" condition are COVERED. Do not reject them under a treatment waiting period. Only reject confirmed treatments for restricted conditions.
+11. In your notes, explicitly justify any rejected items or conditions.
 `;
 
   try {

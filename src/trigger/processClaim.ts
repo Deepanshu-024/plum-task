@@ -27,12 +27,20 @@ export const preEvaluationTask = task({
 export const deterministicPolicyChecksTask = task({
   id: "deterministic-policy-checks",
   maxDuration: 120,
-  run: async (payload: { employeeId: string; treatmentDate: string; claimedAmount: number }) => {
+  run: async (payload: { claimId: string; employeeId: string; treatmentDate: string; claimedAmount: number }) => {
+    const claimsHistory = await prisma.claim.findMany({
+      where: {
+        employeeId: payload.employeeId,
+        id: { not: payload.claimId }
+      }
+    });
+    
     return await runDeterministicPolicyChecks(
       payload.employeeId,
       payload.treatmentDate,
       Number(payload.claimedAmount),
-      new Date('2024-11-02').toISOString() // Hardcoded simulation date
+      new Date('2024-11-02').toISOString(), // Hardcoded simulation date
+      claimsHistory
     );
   }
 });
@@ -52,10 +60,11 @@ export const evaluateMedicalPolicyTask = task({
 export const calculateFinancialPayoutTask = task({
   id: "calculate-financial-payout",
   maxDuration: 120,
-  run: async (payload: { approvedLineItems: any; claimCategory: any }) => {
+  run: async (payload: { approvedLineItems: any; claimCategory: any; hospitalName?: string }) => {
     return await calculateFinancialPayout(
       payload.approvedLineItems,
-      payload.claimCategory
+      payload.claimCategory,
+      payload.hospitalName
     );
   }
 });
@@ -106,6 +115,17 @@ export const processClaimTask = task({
               errorMessage: "Failed to extract document"
             }
           });
+          
+          await prisma.claim.update({
+            where: { id: claimId },
+            data: { 
+              status: 'COMPLETED',
+              decision: 'MANUAL_REVIEW',
+              decisionSummary: `AI failed to extract data (API Error). Sent to manual review. Error: ${JSON.stringify(run.error)}`
+            }
+          });
+          
+          throw new Error(`Document extraction failed due to an AI API error. Claim routed to MANUAL_REVIEW. Detailed error: ${JSON.stringify(run.error)}`);
         }
       }
 
@@ -149,6 +169,7 @@ export const processClaimTask = task({
       // --- Phase E: Agent 3 Module 2 (Deterministic Pre-Policy Checks) ---
       logger.log(`Triggering Agent 3 (Module 2: Pre-Policy Checks) for claim ${claimId}`);
       const prePolicyTaskResult = await deterministicPolicyChecksTask.triggerAndWait({
+        claimId,
         employeeId,
         treatmentDate,
         claimedAmount
@@ -239,7 +260,8 @@ export const processClaimTask = task({
       logger.log(`Triggering Agent 3 (Module 4: Financial Calculator) for claim ${claimId}`);
       const financialTaskResult = await calculateFinancialPayoutTask.triggerAndWait({
         approvedLineItems: policyEvalResult.approved_line_items,
-        claimCategory
+        claimCategory,
+        hospitalName: extractionOutput.hospitals?.[0]
       });
       
       if (!financialTaskResult.ok) {

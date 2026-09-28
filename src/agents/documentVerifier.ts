@@ -54,9 +54,13 @@ async function verifySingleDocument(doc: { url: string; declaredType: string }):
             2. READABILITY — Can you read the key details (patient name, amounts, dates, etc.) from it?
 
             Rules:
-            - If the document is completely different from "${doc.declaredType}" (e.g., a photo of food, a selfie, or a different document type), reject it.
-            - If it IS a ${doc.declaredType} but so blurry/dark/cut-off that key details cannot be read, reject it.
-            - If it IS a ${doc.declaredType} and readable enough to extract info from (even if image quality is poor), ACCEPT it.`
+            - CORE PURPOSE RULE: The declared type acts as a generic bucket for a specific purpose. You must accept reasonable variants AS LONG AS they fulfill that core purpose. However, if a document completely fails the core purpose, it must be strictly REJECTED.
+              * If requested type is a BILL (e.g. HOSPITAL_BILL, PHARMACY_BILL), accept any invoice/receipt from any medical facility (clinic, dental, hospital, pharmacy). BUT it MUST contain financial charges. A clinical note/prescription is NOT a bill.
+              * If requested type is a PRESCRIPTION, it must contain medical advice/medicines. A bill or a lab report is NOT a prescription.
+              * If requested type is a REPORT (e.g. LAB_REPORT, DIAGNOSTIC_REPORT), it must contain test results. A bill or a prescription is NOT a report.
+            - If the document is completely irrelevant (e.g., a photo of food, a selfie), reject it immediately.
+            - If it matches the core purpose but is so blurry/dark/cut-off that key details cannot be read, reject it.
+            - If it matches the core purpose and is readable enough to extract info from (even if image quality is poor), ACCEPT it.`
           },
           {
             type: 'file',

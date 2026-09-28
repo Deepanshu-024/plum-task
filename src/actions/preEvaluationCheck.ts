@@ -11,6 +11,30 @@ export async function preEvaluationCheck(agent2Output: {
   let decision = "CONTINUE";
   let reason = "All pre-evaluation checks passed. Safe to proceed to Policy Evaluation.";
   
+  // 0. API Error / Extraction Failure Check
+  const failedDocs = [];
+  for (const doc of raw) {
+    if (doc?.data?.confidence_score === 0.0 && doc?.data?.illegible_fields?.includes("ALL")) {
+      failedDocs.push(`${doc.type} (${doc.url})`);
+    }
+  }
+
+  if (failedDocs.length > 0) {
+    passed = false;
+    decision = "MANUAL_REVIEW";
+    checks.push({
+      check: "AI Extraction Failure Check",
+      passed: false,
+      reason: `AI failed to extract data (API Error or strict refusal) for: ${failedDocs.join(" | ")}`
+    });
+  } else {
+    checks.push({
+      check: "AI Extraction Failure Check",
+      passed: true,
+      reason: "All documents successfully processed by extraction agents."
+    });
+  }
+
   // 1. Patient Mismatch (TC003)
   const nameToDocs: Record<string, string[]> = {};
   for (const doc of raw) {

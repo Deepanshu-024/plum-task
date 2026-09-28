@@ -12,31 +12,18 @@ export async function extractPrescription(url: string, mimeType: string) {
       model: openai('gpt-4o'),
       system: PRESCRIPTION_PROMPT,
       messages: [
-        { role: 'user', content: [
+        {
+          role: 'user', content: [
             { type: 'text', text: 'Extract the structured data from this PRESCRIPTION.' },
             { type: 'file', data: new URL(url), mediaType: mimeType }
-        ]}
+          ]
+        }
       ],
       output: Output.object({ schema: PrescriptionSchema })
     });
     return output;
-  } catch (err) {
+  } catch (err: any) {
     console.error(`Failed to extract Prescription: ${url}`, err);
-    return {
-      document_type: "PRESCRIPTION" as const,
-      confidence_score: 0.0,
-      illegible_fields: ["ALL"],
-      document_integrity: fallbackIntegrity,
-      patient_name: null,
-      patient_age_or_dob: null,
-      doctor_name: null,
-      doctor_registration: null,
-      clinic_or_hospital_name: null,
-      prescription_date: null,
-      diagnoses: [],
-      investigations: [],
-      medicines: [],
-      treatment_type: null
-    };
+    throw new Error(`AI API Error during Prescription extraction: ${err.message || String(err)}`);
   }
 }

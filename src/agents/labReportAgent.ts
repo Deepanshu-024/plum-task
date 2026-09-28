@@ -12,29 +12,18 @@ export async function extractLabReport(url: string, mimeType: string) {
       model: openai('gpt-4o'),
       system: LAB_REPORT_PROMPT,
       messages: [
-        { role: 'user', content: [
+        {
+          role: 'user', content: [
             { type: 'text', text: 'Extract the structured findings and patient data from this LAB/DIAGNOSTIC REPORT.' },
             { type: 'file', data: new URL(url), mediaType: mimeType }
-        ]}
+          ]
+        }
       ],
       output: Output.object({ schema: LabReportSchema })
     });
     return output;
-  } catch (err) {
+  } catch (err: any) {
     console.error(`Failed to extract Lab Report: ${url}`, err);
-    return {
-      document_type: "LAB_REPORT" as const,
-      confidence_score: 0.0,
-      illegible_fields: ["ALL"],
-      document_integrity: fallbackIntegrity,
-      patient_name: null,
-      report_date: null,
-      test_name: null,
-      test_category: null,
-      lab_name: null,
-      referring_doctor: null,
-      findings_summary: null,
-      report_amount: null
-    };
+    throw new Error(`AI API Error during Lab Report extraction: ${err.message || String(err)}`);
   }
 }

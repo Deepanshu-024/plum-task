@@ -8,7 +8,8 @@ export async function runDeterministicPolicyChecks(
   employeeId: string,
   treatmentDate: string,
   claimedAmount: number,
-  submissionDate: string = new Date().toISOString()
+  submissionDate: string = new Date().toISOString(),
+  claimsHistory: any[] = []
 ) {
   console.log(`[AGENT 3: PRE-POLICY] Running deterministic pre-policy checks...`);
 
@@ -72,7 +73,27 @@ export async function runDeterministicPolicyChecks(
     });
   }
 
-  // 3. Submission Deadline Check
+  // 3. Per-Claim Limit Check (TC008)
+  const perClaimLimit = policyTerms.coverage.per_claim_limit;
+  if (claimedAmount > perClaimLimit) {
+    passed = false;
+    decision = "REJECTED";
+    reason = `Claim rejected: The user-submitted claim amount (₹${claimedAmount}) exceeds the absolute per-claim limit (₹${perClaimLimit}).`;
+    checks.push({
+      check: "Per-Claim Limit",
+      passed: false,
+      reason: `Submitted claim amount ₹${claimedAmount} > ₹${perClaimLimit}.`
+    });
+    return { passed, decision, reason, checks, restrictedConditions: [] };
+  } else {
+    checks.push({
+      check: "Per-Claim Limit",
+      passed: true,
+      reason: `Submitted claim amount ₹${claimedAmount} <= ₹${perClaimLimit}.`
+    });
+  }
+
+  // 4. Submission Deadline Check
   const daysSinceTreatment = Math.floor((sDate.getTime() - tDate.getTime()) / (1000 * 60 * 60 * 24));
   const deadline = policyTerms.submission_rules.deadline_days_from_treatment;
   
@@ -94,7 +115,34 @@ export async function runDeterministicPolicyChecks(
     });
   }
 
-  // 4. Pre-calculate Restricted Conditions
+  // 5. Fraud Signal: Multiple Same-Day Claims (TC009)
+  const sameDayClaimsLimit = policyTerms.fraud_thresholds?.same_day_claims_limit;
+  if (sameDayClaimsLimit !== undefined) {
+    const tDateString = treatmentDate.split('T')[0];
+    const sameDayCount = claimsHistory.filter((c: any) => {
+      const claimDate = c.treatmentDate ? new Date(c.treatmentDate).toISOString().split('T')[0] : '';
+      return claimDate === tDateString;
+    }).length;
+    if (sameDayCount >= sameDayClaimsLimit) {
+      passed = false;
+      decision = "MANUAL_REVIEW";
+      reason = `Fraud Signal: Member has already submitted ${sameDayCount} claims for ${tDateString}, exceeding the same-day limit of ${sameDayClaimsLimit}.`;
+      checks.push({
+        check: "Same-Day Claims Limit",
+        passed: false,
+        reason: `Exceeded same day claims limit of ${sameDayClaimsLimit}. Found ${sameDayCount} existing claims.`
+      });
+      return { passed, decision, reason, checks, restrictedConditions: [] };
+    } else {
+      checks.push({
+        check: "Same-Day Claims Limit",
+        passed: true,
+        reason: `Found ${sameDayCount} existing claims for ${tDateString} (limit: ${sameDayClaimsLimit}).`
+      });
+    }
+  }
+
+  // 6. Pre-calculate Restricted Conditions
   const restrictedConditions: string[] = [];
   const specificWaitPeriods = policyTerms.waiting_periods.specific_conditions;
   
