@@ -1,7 +1,6 @@
 'use server';
 
-import fs from 'fs';
-import path from 'path';
+import policyTerms from '../../public/policy_terms.json';
 
 export async function runDeterministicPolicyChecks(
   //agent2Output: any,
@@ -13,8 +12,7 @@ export async function runDeterministicPolicyChecks(
 ) {
   console.log(`[AGENT 3: PRE-POLICY] Running deterministic pre-policy checks...`);
 
-  const policyPath = path.join(process.cwd(), 'policy_terms.json');
-  const policyTerms = JSON.parse(fs.readFileSync(policyPath, 'utf8'));
+  // policyTerms loaded via import
   
   const member = policyTerms.members.find((m: any) => m.member_id === employeeId);
   if (!member) {
@@ -28,7 +26,7 @@ export async function runDeterministicPolicyChecks(
   let reason = "All deterministic policy checks passed.";
 
   const tDate = new Date(treatmentDate);
-  const jDate = new Date(memberJoinDate);
+  const jDate = new Date(memberJoinDate as string);
   const sDate = new Date(submissionDate);
 
   // 1. Initial Waiting Period Check (TC004)

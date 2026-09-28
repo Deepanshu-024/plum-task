@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useUser, useClerk, UserButton } from '@clerk/nextjs'
 import { AlertTriangle, ArrowUpRight, Bell, Check, ChevronDown, CircleHelp, ClipboardCheck, Clock3, FileCheck2, FileText, Filter, Headphones, LayoutDashboard, MoreHorizontal, Paperclip, Play, Plus, Search, Settings2, ShieldCheck, Sparkles, Upload, UserRound, UsersRound, X, Loader2 } from 'lucide-react'
-import policy from '../../policy_terms.json'
+import policy from '../../public/policy_terms.json'
 import { NewClaim } from '@/components/NewClaim'
 
 function StatusBadge({ status }: { status: string }) {
