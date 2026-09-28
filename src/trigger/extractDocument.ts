@@ -10,11 +10,11 @@ export const extractSingleDocumentTask = task({
   maxDuration: 120, // 2 mins per document
   run: async (doc: VerifiedDocument) => {
     const mimeType = getMimeType(doc.url, doc.mimeType);
-    
+
     if (doc.detectedType === 'PRESCRIPTION') {
       const data = await extractPrescription(doc.url, mimeType);
       return { type: 'PRESCRIPTION', data, url: doc.url };
-    } 
+    }
     else if (['HOSPITAL_BILL', 'PHARMACY_BILL', 'DENTAL_REPORT'].includes(doc.detectedType)) {
       const data = await extractHospitalBill(doc.url, mimeType);
       return { type: 'BILL', data, url: doc.url };
@@ -23,7 +23,7 @@ export const extractSingleDocumentTask = task({
       const data = await extractLabReport(doc.url, mimeType);
       return { type: 'REPORT', data, url: doc.url };
     }
-    
+
     return null;
   }
 });
