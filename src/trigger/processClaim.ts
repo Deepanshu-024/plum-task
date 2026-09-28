@@ -34,7 +34,7 @@ export const deterministicPolicyChecksTask = task({
         id: { not: payload.claimId }
       }
     });
-    
+
     return await runDeterministicPolicyChecks(
       payload.employeeId,
       payload.treatmentDate,
@@ -74,13 +74,13 @@ export const processClaimTask = task({
   maxDuration: 900, // 15 minutes max
   run: async (payload: ProcessClaimPayload, { ctx }) => {
     const { claimId, employeeId, treatmentDate, claimedAmount, claimCategory, verifiedDocuments } = payload;
-    
+
     logger.log(`Starting background processing for claim ${claimId}`, { payload });
 
     try {
       // --- Phase C: Agent 2 (Parallel Information Extraction) ---
       logger.log(`Triggering Agent 2 for claim ${claimId} with ${verifiedDocuments.length} docs`);
-      
+
       const batchResult = await batch.triggerAndWait<typeof extractSingleDocumentTask>(
         verifiedDocuments.map(doc => ({ id: extractSingleDocumentTask.id, payload: doc }))
       );
@@ -90,7 +90,7 @@ export const processClaimTask = task({
         if (run.ok) {
           const docOutput = run.output;
           rawResults.push(docOutput);
-          
+
           await prisma.traceEntry.create({
             data: {
               claimId,
@@ -115,16 +115,16 @@ export const processClaimTask = task({
               errorMessage: "Failed to extract document"
             }
           });
-          
+
           await prisma.claim.update({
             where: { id: claimId },
-            data: { 
+            data: {
               status: 'COMPLETED',
               decision: 'MANUAL_REVIEW',
               decisionSummary: `AI failed to extract data (API Error). Sent to manual review. Error: ${JSON.stringify(run.error)}`
             }
           });
-          
+
           throw new Error(`Document extraction failed due to an AI API error. Claim routed to MANUAL_REVIEW. Detailed error: ${JSON.stringify(run.error)}`);
         }
       }
@@ -134,7 +134,7 @@ export const processClaimTask = task({
       // --- Phase D: Agent 3 Module 1 (Pre-Evaluation Checks) ---
       logger.log(`Triggering Agent 3 (Module 1: Pre-Evaluation) for claim ${claimId}`);
       const preEvalTaskResult = await preEvaluationTask.triggerAndWait({ rawExtractions: extractionOutput.rawExtractions });
-      
+
       if (!preEvalTaskResult.ok) {
         throw new Error(`Pre-Evaluation Task failed: ${preEvalTaskResult.error}`);
       }
@@ -156,7 +156,7 @@ export const processClaimTask = task({
         logger.log(`Agent 3 Module 1 FAILED. Moving claim ${claimId} to ${preEvalResult.decision}.`);
         await prisma.claim.update({
           where: { id: claimId },
-          data: { 
+          data: {
             status: 'COMPLETED',
             decision: preEvalResult.decision as any,
             decisionSummary: preEvalResult.reason,
@@ -174,7 +174,7 @@ export const processClaimTask = task({
         treatmentDate,
         claimedAmount
       });
-      
+
       if (!prePolicyTaskResult.ok) {
         throw new Error(`Pre-Policy Checks Task failed: ${prePolicyTaskResult.error}`);
       }
@@ -186,7 +186,7 @@ export const processClaimTask = task({
           agentName: 'POLICY_EVALUATOR',
           stepOrder: 4,
           status: prePolicyResult.passed ? 'PASS' : 'FAIL',
-          input: { 
+          input: {
             employeeId,
             treatmentDate
           },
@@ -199,7 +199,7 @@ export const processClaimTask = task({
         logger.log(`Agent 3 Module 2 FAILED. Moving claim ${claimId} to ${prePolicyResult.decision}.`);
         await prisma.claim.update({
           where: { id: claimId },
-          data: { 
+          data: {
             status: 'COMPLETED',
             decision: prePolicyResult.decision as any,
             decisionSummary: prePolicyResult.reason,
@@ -228,7 +228,7 @@ export const processClaimTask = task({
           agentName: 'POLICY_EVALUATOR',
           stepOrder: 5,
           status: policyEvalResult.decision !== 'MEDICAL_REJECTED' ? 'PASS' : 'FAIL',
-          input: { 
+          input: {
             claimCategory,
             restrictedConditions: prePolicyResult.restrictedConditions,
             medicalData: {
@@ -246,7 +246,7 @@ export const processClaimTask = task({
         logger.log(`Agent 3 Module 3 REJECTED claim ${claimId}.`);
         await prisma.claim.update({
           where: { id: claimId },
-          data: { 
+          data: {
             status: 'COMPLETED',
             decision: 'REJECTED',
             decisionSummary: policyEvalResult.notes,
@@ -263,7 +263,7 @@ export const processClaimTask = task({
         claimCategory,
         hospitalName: extractionOutput.hospitals?.[0]
       });
-      
+
       if (!financialTaskResult.ok) {
         throw new Error(`Financial Calculator Task failed: ${financialTaskResult.error}`);
       }
@@ -275,7 +275,7 @@ export const processClaimTask = task({
           agentName: 'FINANCIAL_CALCULATOR',
           stepOrder: 6,
           status: 'PASS',
-          input: { 
+          input: {
             approvedLineItems: policyEvalResult.approved_line_items,
             claimCategory
           },
@@ -298,7 +298,7 @@ export const processClaimTask = task({
 
       await prisma.claim.update({
         where: { id: claimId },
-        data: { 
+        data: {
           status: 'COMPLETED',
           decision: finalDecisionMap[policyEvalResult.decision as keyof typeof finalDecisionMap] as any,
           decisionSummary: `Claim Processed. ${financialResult.breakdown}. Medical notes: ${policyEvalResult.notes}`,
