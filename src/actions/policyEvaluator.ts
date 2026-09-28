@@ -1,8 +1,7 @@
 import { generateObject } from 'ai';
 import { openai } from '@ai-sdk/openai';
 import { z } from 'zod';
-import fs from 'fs';
-import path from 'path';
+import policyTerms from '../../public/policy_terms.json';
 
 // Schema for the Medical Policy Evaluator output
 const PolicyEvaluatorSchema = z.object({
@@ -35,12 +34,11 @@ export async function evaluateMedicalPolicy(
   console.log(`[AGENT 3: POLICY EVALUATOR] Running LLM Policy Evaluation...`);
 
   // Load policy terms
-  const policyPath = path.join(process.cwd(), 'policy_terms.json');
-  const policyTerms = JSON.parse(fs.readFileSync(policyPath, 'utf8'));
+  // policyTerms loaded via import
 
   const exclusions = policyTerms.exclusions;
   const preAuth = policyTerms.pre_authorization;
-  const categoryTerms = policyTerms.opd_categories[claimCategory.toLowerCase()] || {};
+  const categoryTerms = policyTerms.opd_categories[claimCategory.toLowerCase() as keyof typeof policyTerms.opd_categories] || {};
 
   const prompt = `You are a strict Medical Policy Evaluator for an insurance company.
 Your job is to read the extracted medical data from a claim and determine if any of the diagnoses, treatments, or billed line items violate the policy terms.

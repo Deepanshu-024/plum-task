@@ -1,7 +1,6 @@
 'use server';
 
-import fs from 'fs';
-import path from 'path';
+import policyTerms from '../../public/policy_terms.json';
 
 export async function calculateFinancialPayout(
   approvedLineItems: { description: string; amount: number }[],
@@ -11,11 +10,10 @@ export async function calculateFinancialPayout(
   console.log(`[AGENT 3: FINANCIAL CALCULATOR] Running Financial Adjudication...`);
 
   // Load policy terms
-  const policyPath = path.join(process.cwd(), 'policy_terms.json');
-  const policyTerms = JSON.parse(fs.readFileSync(policyPath, 'utf8'));
+  // policyTerms loaded via import
 
   const globalClaimLimit = policyTerms.coverage.per_claim_limit;
-  const categoryTerms = policyTerms.opd_categories[claimCategory.toLowerCase()];
+  const categoryTerms = policyTerms.opd_categories[claimCategory.toLowerCase() as keyof typeof policyTerms.opd_categories];
   
   if (!categoryTerms) {
     throw new Error(`Category ${claimCategory} not found in policy terms.`);
@@ -30,7 +28,7 @@ export async function calculateFinancialPayout(
   // 1.5 Apply Network Discount (if applicable)
   let networkDiscountAmount = 0;
   let isNetworkHospital = false;
-  const networkDiscountPercent = categoryTerms.network_discount_percent || 0;
+  const networkDiscountPercent = ('network_discount_percent' in categoryTerms ? (categoryTerms as any).network_discount_percent : 0) || 0;
   
   if (hospitalName && networkDiscountPercent > 0) {
     const networkHospitals = policyTerms.network_hospitals || [];

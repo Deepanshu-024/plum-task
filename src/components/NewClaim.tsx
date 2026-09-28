@@ -2,7 +2,7 @@
 
 import { useState, useRef, FormEvent } from 'react'
 import { Upload, Paperclip, FileText, Check, ShieldCheck, X, ArrowUpRight, Loader2 } from 'lucide-react'
-import policy from '../../policy_terms.json'
+import policy from '../../public/policy_terms.json'
 import testCasesData from '../../test_cases.json'
 
 export function NewClaim({ close }: { close: () => void }) {
